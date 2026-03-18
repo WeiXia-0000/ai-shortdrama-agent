@@ -45,8 +45,19 @@ def _safe_dir_name(s: str) -> str:
 
 def _sanitize_for_json(s: str) -> str:
     # 去掉控制字符，避免 JSONDecodeError: Invalid control character
-    # 保留 \n \t \r
-    return "".join(ch for ch in s if ch in ("\n", "\t", "\r") or ord(ch) >= 32)
+    # 关键点：JSON 字符串内部不能出现“真实换行/制表符/回车”，必须是转义的 \\n。
+    # 因此这里把 \n/\t/\r 统一替换成空格，尽可能保留可读性同时保证可解析。
+    out_chars: List[str] = []
+    for ch in s:
+        code = ord(ch)
+        if ch in ("\n", "\t", "\r"):
+            out_chars.append(" ")
+        elif code >= 32:
+            out_chars.append(ch)
+        else:
+            # 其他控制字符直接丢弃
+            continue
+    return "".join(out_chars)
 
 
 def _extract_json(raw_text: str) -> str:
