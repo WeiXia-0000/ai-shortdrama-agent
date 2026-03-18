@@ -48,6 +48,15 @@
 pip install google-adk google-genai python-dotenv
 ```
 
+## 关键源码依赖（必须存在）
+
+`run_series.py` 会依赖仓库中的：
+
+- `ai_manga_factory/agent.py`（提供 `root_agent`、语言策略等）
+- `ai_manga_factory/__init__.py`（确保包导入正常）
+
+如果你采用“只推指定文件”的策略到远端，请确保部署环境里这些文件也能被访问到（否则命令会导入失败）。
+
 ### 3）API Key（必须）
 
 在 `ai_manga_factory/.env` 放置你的密钥，至少包含：
