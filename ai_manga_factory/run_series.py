@@ -296,9 +296,18 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
     debug_dir = output_root / "_debug" / f"episode_batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     _ensure_dir(debug_dir)
 
-    series_outline_path = Path(args.series_outline)
-    character_bible_path = Path(args.character_bible)
-    series_dir = series_outline_path.parent
+    # 新参数：--series-dir 指向 runs/<剧名>/ 目录
+    # 兼容旧参数：若没提供 --series-dir，则使用 --series-outline/--character-bible/--series-memory
+    if getattr(args, "series_dir", ""):
+        series_dir = Path(args.series_dir)
+        series_outline_path = series_dir / "series_outline.json"
+        character_bible_path = series_dir / "character_bible.json"
+        series_memory_path = series_dir / "series_memory.json"
+    else:
+        series_outline_path = Path(args.series_outline)
+        character_bible_path = Path(args.character_bible)
+        series_dir = series_outline_path.parent
+        series_memory_path = Path(args.series_memory) if args.series_memory else (series_dir / "series_memory.json")
 
     series_outline = json.loads(series_outline_path.read_text(encoding="utf-8"))
     character_bible = json.loads(character_bible_path.read_text(encoding="utf-8"))
@@ -306,8 +315,6 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
     series_title = series_outline.get("title") or series_dir.name
     episodes_root = series_dir / "episodes"
     _ensure_dir(episodes_root)
-
-    series_memory_path = Path(args.series_memory) if args.series_memory else (series_dir / "series_memory.json")
     if series_memory_path.exists():
         series_memory = json.loads(series_memory_path.read_text(encoding="utf-8"))
     else:
@@ -461,6 +468,10 @@ async def main_async() -> None:
     parser.add_argument("--audience-view", default="")
     parser.add_argument("--quality-mode", default="fast", choices=["fast", "quality"])
 
+    # episode-batch 新入口：直接给剧名目录
+    parser.add_argument("--series-dir", default="")
+
+    # 兼容旧入口（不再推荐）：直接给 series_outline/character_bible/series_memory 文件路径
     parser.add_argument("--series-outline", default="")
     parser.add_argument("--character-bible", default="")
     parser.add_argument("--episodes", default="")
@@ -474,8 +485,8 @@ async def main_async() -> None:
     if args.mode == "series-setup":
         await run_series_setup(output_root=output_root, args=args)
     else:
-        if not args.series_outline or not args.character_bible:
-            raise RuntimeError("episode-batch 模式必须提供 --series-outline 和 --character-bible。")
+        if not getattr(args, "series_dir", "") and (not args.series_outline or not args.character_bible):
+            raise RuntimeError("episode-batch 模式必须提供 --series-dir（推荐），或提供 --series-outline + --character-bible。")
         await run_episode_batch(output_root=output_root, args=args)
 
 
