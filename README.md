@@ -5,7 +5,7 @@
 ## 你会得到什么
 
 1. `series-setup`：生成长篇系列的基础材料
-2. `episode-batch`：按集生成 `plot / script / storyboard`，并更新 `series_memory`
+2. `episode-batch`：按集先生成 `episode_function`（本集功能卡），再生成 `plot / script / storyboard`，并更新 `series_memory`
 
 所有生成结果都会落在仓库内的：
 
@@ -22,6 +22,7 @@
 
 以及每集子目录：
 
+- `episode_function.json`（本集在整季中的功能卡：承接 anchor、必须推进/继承、持久变化等）
 - `plot.json`
 - `script.json`
 - `storyboard.json`
@@ -109,6 +110,30 @@ python -m ai_manga_factory.run_series --mode episode-batch `
 
 整个流程由两个阶段构成，并由 `series_memory` 把跨集连续性“落盘 + 读取”。
 
+### 流程图（series-setup 到 episode-batch）
+
+```mermaid
+flowchart TD
+    A[market_research_agent] --> B[trend_scout_series]
+    B --> C[concept_judge_series]
+    C --> D[season_mainline_agent]
+    D --> E[character_growth_agent]
+    D --> F[world_reveal_pacing_agent]
+    E --> G[coupling_reconciler_agent]
+    F --> G
+    G --> H[series_spine_agent]
+    H --> I[anchor_beats_agent]
+    I --> J[episode_outline_expander_agent]
+    J --> K[character_bible_agent]
+    K --> L[series_outline.json + anchor_beats.json + character_bible.json + series_memory.json]
+    L --> M[episode_function_agent]
+    M --> P[episode_plot_agent]
+    P --> Q[episode_script_agent]
+    Q --> R[episode_storyboard_agent]
+    R --> S[episode_memory_agent]
+    S --> N[episodes/* + episode_batch.json + series_memory.json]
+```
+
 ### 1）series-setup（生成系列基础材料）
 
 `run_series.py --mode series-setup` 会按顺序调用（均要求输出结构化 JSON）：
@@ -116,12 +141,24 @@ python -m ai_manga_factory.run_series --mode episode-batch `
 1. `market_research_agent`：生成市场与创作方向 `market_report`
 2. `trend_scout_series`：生成 3 个长篇系列概念候选
 3. `concept_judge_series`：评审并推荐 1 个概念
-4. `series_planner_agent`：生成 `series_outline.json`（包含 `episode_list`）
-5. `character_bible_agent`：生成 `character_bible.json`（含 `portrait_prompt_cn` <= 800 约束）
+4. `season_mainline_agent`：先定义整季主线（只给方向，不给分集细节）
+5. `character_growth_agent`：定义人物成长路径（人物成长主导）
+6. `world_reveal_pacing_agent`：定义世界观揭示节奏
+7. `coupling_reconciler_agent`：对齐“人物成长线”与“世界揭示线”的双向因果链
+8. `series_spine_agent`：产出全作骨架（延迟细化，不写具体分集）
+9. `anchor_beats_agent`：锁定关键承重点（数量动态，不固定）
+10. `episode_outline_expander_agent`：从 spine + anchors 展开成 `series_outline`
+11. `character_bible_agent`：生成 `character_bible.json`（含 `portrait_prompt_cn` <= 800 约束）
 
 series-setup 输出固定落盘到：
 
 - `ai_manga_factory/runs/<剧名>/series_setup.json`
+- `ai_manga_factory/runs/<剧名>/season_mainline.json`
+- `ai_manga_factory/runs/<剧名>/character_growth.json`
+- `ai_manga_factory/runs/<剧名>/world_reveal_pacing.json`
+- `ai_manga_factory/runs/<剧名>/coupling_map.json`
+- `ai_manga_factory/runs/<剧名>/series_spine.json`
+- `ai_manga_factory/runs/<剧名>/anchor_beats.json`
 - `ai_manga_factory/runs/<剧名>/series_outline.json`
 - `ai_manga_factory/runs/<剧名>/character_bible.json`
 - `ai_manga_factory/runs/<剧名>/episode_pitch.json`
@@ -136,16 +173,37 @@ series-setup 输出固定落盘到：
 - `series_outline.json`
 - `character_bible.json`
 - `series_memory.json`
+- `anchor_beats.json`（若存在，则供 `episode_function_agent` 关联 `linked_anchor_ids`；旧目录无此文件时为空对象）
 
 然后对每个 `episode_id` 依次执行：
 
-1. `episode_plot_agent`：生成本集节拍 plot，并对齐 `series_memory.open_threads`
-2. `episode_script_agent`：生成口语化 script（包含对话/旁白与规则类表达风格约束）
-3. `episode_storyboard_agent`：生成 Seedance 可用分镜/字幕/提示词（含固定栏目模板）
-4. `episode_memory_agent`：更新并落盘 `series_memory`（推进 open_threads，维护有名字角色的首次/末次登场与状态）
+1. `episode_function_agent`：生成本集功能卡 `episode_function.json`（本集在整季负责什么、删了会坏什么、必须推进/继承什么）
+2. `episode_plot_agent`：在功能卡约束下生成本集节拍 plot，并对齐 `series_memory.open_threads`
+3. `episode_script_agent`：生成口语化 script（须落实 `episode_function` 中的推进与认知变化）
+4. `episode_storyboard_agent`：生成 Seedance 可用分镜/字幕/提示词（含固定栏目模板）
+5. `episode_memory_agent`：更新并落盘 `series_memory`（回扣 `episode_function` 中的持久变化与线索强化）
+
+`episode_function` 建议字段结构：
+
+```json
+{
+  "episode_id": 1,
+  "linked_anchor_ids": [1, 3],
+  "episode_goal_in_series": "string",
+  "must_advance": ["string"],
+  "must_inherit": ["string"],
+  "what_changes_persistently": ["string"],
+  "what_is_learned": ["string"],
+  "what_is_mislearned": ["string"],
+  "what_is_gained": ["string"],
+  "what_is_lost": ["string"],
+  "future_threads_strengthened": ["string"]
+}
+```
 
 每集最终写入到：
 
+- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/episode_function.json`
 - `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/plot.json`
 - `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/script.json`
 - `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/storyboard.json`
@@ -162,6 +220,14 @@ series-setup 输出固定落盘到：
 在调用各 agent 之前，会基于上下文文本推断 `genre_key`，
 并从 `genres/genre_reference.json` 抽取对应的 `rules_block` 注入提示词，
 确保禁忌、节奏、语言铁律等在多步骤生成里一致生效。
+
+### 设计意图（为什么这样拆）
+
+- 先拆开定义 `整季主线/人物成长/世界揭示`，避免一个 agent 早期过度细化。
+- 用 `coupling_reconciler_agent` 强制对齐双向因果：  
+  世界观变化 -> 事件压力 -> 人物改变；  
+  人物改变 -> 决策变化 -> 推动下一次世界揭示。
+- `series_spine + anchor_beats` 先锁承重结构，再让分集展开，减少“55 集看起来热闹但空心”的风险。
 
 ## 数据结构约定（简表）
 
