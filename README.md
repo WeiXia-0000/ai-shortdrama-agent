@@ -139,30 +139,68 @@ python -m ai_manga_factory.run_series --mode episode-batch `
 ### 流程图（series-setup 到 episode-batch）
 
 ```mermaid
-flowchart TD
-    A[market_research_agent] --> B[trend_scout_series]
-    B --> C[concept_judge_series]
-    C --> D[season_mainline_agent]
-    D --> E[character_growth_agent]
-    D --> F[world_reveal_pacing_agent]
-    E --> G[coupling_reconciler_agent]
-    F --> G
-    G --> H[series_spine_agent]
-    H --> I[anchor_beats_agent]
-    I --> J[episode_outline_expander_agent]
-    J --> JR[outline_review_agent]
-    JR -->|score<阈值| J
-    JR -->|score达标| K[character_bible_agent]
-    K --> L[series_outline.json + outline_review.json + anchor_beats.json + character_bible.json + series_memory.json]
-    L --> M[episode_function_agent]
-    M --> P[episode_plot_agent]
-    P --> Q[episode_script_agent]
-    Q --> R[episode_storyboard_agent]
-    R --> S[episode_memory_agent]
-    S --> SQ[quality_mode: 结构质检/缺字段返修重试]
-    SQ -->|通过| T[character_visual_patch_agent]
-    SQ -->|不通过重试| R
-    T --> N[episodes/* + episode_batch.json + series_memory.json + character_bible.json]
+flowchart LR
+    %% ------------------------ 模块一：Series Setup ------------------------
+    subgraph M1[模块一：系列构建（Series Setup）]
+      direction LR
+      A1[market_research_agent] --> A2[trend_scout_series]
+      A2 --> A3[concept_judge_series]
+      A3 --> A4[season_mainline_agent]
+      A4 --> A5[character_growth_agent]
+      A4 --> A6[world_reveal_pacing_agent]
+      A5 --> A7[coupling_reconciler_agent]
+      A6 --> A7
+      A7 --> A8[series_spine_agent]
+      A8 --> A9[anchor_beats_agent]
+      A9 --> A10[episode_outline_expander_agent]
+    end
+
+    %% ------------------------ 模块二：大纲评审闭环 ------------------------
+    subgraph M2[模块二：大纲评审与重写闭环]
+      direction LR
+      B1[outline_review_agent]
+      B2{score 达标?}
+      B3[重写 series_outline]
+      B4[character_bible_agent]
+      A10 --> B1 --> B2
+      B2 -- 否 --> B3 --> A10
+      B2 -- 是 --> B4
+    end
+
+    %% ------------------------ 模块三：单集生产流水线 ------------------------
+    subgraph M3[模块三：单集生产（Episode Batch）]
+      direction LR
+      C1[episode_function_agent] --> C2[episode_plot_agent]
+      C2 --> C3[episode_script_agent]
+      C3 --> C4[episode_storyboard_agent]
+      C4 --> C5[episode_memory_agent]
+      C5 --> C6[character_visual_patch_agent]
+    end
+
+    %% ------------------------ 模块四：质量门控 ------------------------
+    subgraph M4[模块四：质量门控（quality_mode）]
+      direction LR
+      D1[阶段质检: 缺字段/空字段/结构约束]
+      D2{通过?}
+      C4 --> D1 --> D2
+      D2 -- 否 --> C4
+      D2 -- 是 --> C5
+    end
+
+    %% ------------------------ 模块五：落盘产物 ------------------------
+    subgraph M5[模块五：落盘与可读结构]
+      direction LR
+      E1[L0~L3 系列文件: series_outline / outline_review / character_bible / series_memory]
+      E2[L4_episodes: 01_episode_function ~ 06_package]
+      E3[series_manifest: reading_order + depends_on]
+    end
+
+    B4 --> E1
+    E1 --> C1
+    C6 --> E2
+    C6 --> E1
+    E1 --> E3
+    E2 --> E3
 ```
 
 ### 1）series-setup（生成系列基础材料）
