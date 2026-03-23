@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -121,6 +121,125 @@ async def _run_agent_json(
         return json.loads(patched)
 
 
+def _is_blank(v: Any) -> bool:
+    if v is None:
+        return True
+    if isinstance(v, str):
+        return not v.strip()
+    if isinstance(v, (list, dict)):
+        return len(v) == 0
+    return False
+
+
+def _validate_required_keys(obj: Dict[str, Any], required: List[str]) -> List[str]:
+    issues: List[str] = []
+    for k in required:
+        if k not in obj:
+            issues.append(f"缺少字段: {k}")
+            continue
+        if _is_blank(obj.get(k)):
+            issues.append(f"字段为空: {k}")
+    return issues
+
+
+def _validate_stage_output(stage: str, obj: Dict[str, Any]) -> List[str]:
+    if stage == "character_bible":
+        issues = _validate_required_keys(obj, ["style_anchor", "main_characters"])
+        chars = obj.get("main_characters") or []
+        if not isinstance(chars, list) or not chars:
+            issues.append("main_characters 不能为空数组")
+            return issues
+        for c in chars:
+            if not isinstance(c, dict):
+                issues.append("main_characters 中存在非对象条目")
+                continue
+            issues.extend(
+                _validate_required_keys(
+                    c,
+                    [
+                        "name",
+                        "appearance_lock",
+                        "face_triptych_prompt_cn",
+                        "body_triptych_prompt_cn",
+                        "negative_prompt_cn",
+                    ],
+                )
+            )
+        return issues
+    if stage == "episode_function":
+        return _validate_required_keys(
+            obj,
+            ["episode_id", "episode_goal_in_series", "must_advance", "must_inherit", "future_threads_strengthened"],
+        )
+    if stage == "plot":
+        return _validate_required_keys(obj, ["episode_id", "title", "acts", "hook", "cliffhanger", "logic_check"])
+    if stage == "script":
+        issues = _validate_required_keys(obj, ["episode_id", "characters", "scenes"])
+        scenes = obj.get("scenes") or []
+        if isinstance(scenes, list) and len(scenes) < 4:
+            issues.append("script.scenes 过少（建议 >=4）")
+        return issues
+    if stage == "storyboard":
+        issues = _validate_required_keys(obj, ["episode_id", "style", "segments"])
+        segs = obj.get("segments") or []
+        if isinstance(segs, list) and len(segs) < 6:
+            issues.append("storyboard.segments 过少（建议 >=6）")
+        return issues
+    if stage == "memory":
+        return _validate_required_keys(obj, ["episodes", "characters"])
+    if stage == "char_visual_patch":
+        return _validate_required_keys(obj, ["characters"])
+    return []
+
+
+async def _run_agent_json_with_qc(
+    *,
+    stage: str,
+    agent,
+    prompt: str,
+    quality_mode: str,
+    session_service: InMemorySessionService,
+    user_id: str,
+    session_id: str,
+    debug_dir: Path,
+    max_rounds: int = 3,
+) -> Dict[str, Any]:
+    if quality_mode != "quality":
+        return await _run_agent_json(
+            agent,
+            prompt,
+            session_service=session_service,
+            user_id=user_id,
+            session_id=session_id,
+            debug_dir=debug_dir,
+        )
+
+    current_prompt = prompt
+    last_issues: List[str] = []
+    for i in range(1, max_rounds + 1):
+        sid = f"{session_id}_r{i}"
+        out = await _run_agent_json(
+            agent,
+            current_prompt,
+            session_service=session_service,
+            user_id=user_id,
+            session_id=sid,
+            debug_dir=debug_dir,
+        )
+        issues = _validate_stage_output(stage, out)
+        if not issues:
+            return out
+        last_issues = issues
+        feedback = "\n".join([f"- {x}" for x in issues])
+        current_prompt = (
+            prompt
+            + "\n\n【质检反馈】\n上轮输出未通过，请仅修复以下问题并仍只输出一个 JSON 对象：\n"
+            + feedback
+            + "\n【要求】不得缺字段、不得输出 markdown、不得输出解释文本。"
+        )
+    raise RuntimeError(f"{stage} 在 quality 模式下重试 {max_rounds} 轮后仍未通过质检: {last_issues}")
+
+
 def _parse_episode_ids(s: str) -> List[int]:
     s = (s or "").strip()
     if not s:
@@ -193,6 +312,7 @@ def _paths_layered(series_dir: Path) -> Dict[str, Any]:
         "series_spine": sd / "L2_spine" / "02_series_spine.json",
         "anchor_beats": sd / "L2_spine" / "03_anchor_beats.json",
         "series_outline": sd / "L3_series" / "01_series_outline.json",
+        "outline_review": sd / "L3_series" / "01b_outline_review.json",
         "character_bible": sd / "L3_series" / "02_character_bible.json",
         "series_memory": sd / "L3_series" / "03_series_memory.json",
         "episode_batch": sd / "L3_series" / "04_episode_batch.json",
@@ -215,6 +335,7 @@ def _paths_flat(series_dir: Path) -> Dict[str, Any]:
         "series_spine": sd / "series_spine.json",
         "anchor_beats": sd / "anchor_beats.json",
         "series_outline": sd / "series_outline.json",
+        "outline_review": sd / "outline_review.json",
         "character_bible": sd / "character_bible.json",
         "series_memory": sd / "series_memory.json",
         "episode_batch": sd / "episode_batch.json",
@@ -306,7 +427,8 @@ def _write_series_manifest(series_dir: Path, series_title: str, paths: Optional[
             ("L2", "系列骨架", "L2_spine/02_series_spine.json", ["L2_spine/01_coupling_map.json"], "全作 spine"),
             ("L2", "承重锚点", "L2_spine/03_anchor_beats.json", ["L2_spine/02_series_spine.json"], "关键转折点"),
             ("L3", "分集大纲", "L3_series/01_series_outline.json", ["L2_spine/03_anchor_beats.json"], "episode_list + overall_arc"),
-            ("L3", "角色圣经", "L3_series/02_character_bible.json", ["L3_series/01_series_outline.json"], "外观锁与 Seedance 肖像"),
+            ("L3", "大纲评审", "L3_series/01b_outline_review.json", ["L3_series/01_series_outline.json"], "题材/市场/节奏/转折评分与改写建议"),
+            ("L3", "角色圣经", "L3_series/02_character_bible.json", ["L3_series/01_series_outline.json", "L3_series/01b_outline_review.json"], "外观锁与 Seedance 肖像"),
             ("L3", "系列记忆", "L3_series/03_series_memory.json", ["L3_series/01_series_outline.json"], "跨集记忆；batch 更新"),
             ("L3", "批次汇总", "L3_series/04_episode_batch.json", ["L3_series/03_series_memory.json"], "已生成分集 package 列表"),
             ("L3", "阅读导航", "L3_series/05_series_manifest.json", ["L3_series/04_episode_batch.json"], "本文件：顺序与依赖说明"),
@@ -337,7 +459,8 @@ def _write_series_manifest(series_dir: Path, series_title: str, paths: Optional[
             ("L2", "系列骨架", "series_spine.json", ["coupling_map.json"], "全作 spine"),
             ("L2", "承重锚点", "anchor_beats.json", ["series_spine.json"], "关键转折点"),
             ("L3", "分集大纲", "series_outline.json", ["anchor_beats.json"], "episode_list + overall_arc"),
-            ("L3", "角色圣经", "character_bible.json", ["series_outline.json"], "外观锁与 Seedance 肖像"),
+            ("L3", "大纲评审", "outline_review.json", ["series_outline.json"], "题材/市场/节奏/转折评分与改写建议"),
+            ("L3", "角色圣经", "character_bible.json", ["series_outline.json", "outline_review.json"], "外观锁与 Seedance 肖像"),
             ("L3", "系列记忆", "series_memory.json", ["series_outline.json"], "跨集记忆；batch 更新"),
             ("L3", "批次汇总", "episode_batch.json", ["series_memory.json"], "已生成分集 package 列表"),
             ("L3", "阅读导航", "series_manifest.json", ["episode_batch.json"], "本文件：顺序与依赖说明"),
@@ -405,6 +528,7 @@ async def _patch_character_bible_new_characters(
     script_out: Dict[str, Any],
     ep_id: int,
     infer_text: str,
+    quality_mode: str,
     session_service: InMemorySessionService,
     user_id: str,
     debug_dir: Path,
@@ -426,9 +550,11 @@ async def _patch_character_bible_new_characters(
         f"episode_id={ep_id}\n"
     )
     patch_prompt = _maybe_inject_genre_rules(infer_text, patch_prompt_base)
-    patch_out = await _run_agent_json(
-        series_agents.character_visual_patch_agent,
-        patch_prompt,
+    patch_out = await _run_agent_json_with_qc(
+        stage="char_visual_patch",
+        agent=series_agents.character_visual_patch_agent,
+        prompt=patch_prompt,
+        quality_mode=quality_mode,
         session_service=session_service,
         user_id=user_id,
         session_id=f"episode_{ep_id}_char_visual_patch",
@@ -612,7 +738,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         debug_dir=debug_dir,
     )
 
-    # 11) 展开为 series_outline（分集）
+    # 11) 展开为 series_outline（分集），并用 outline_review_agent 做评分复审
     outline_prompt_base = (
         "将 series_spine + anchor_beats 展开为 series_outline（与现有 JSON 兼容）。\n\n"
         f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
@@ -621,14 +747,60 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
     )
     outline_prompt = _maybe_inject_genre_rules(infer_text, outline_prompt_base)
-    outline_out = await _run_agent_json(
-        series_agents.episode_outline_expander_agent,
-        outline_prompt,
-        session_service=session_service,
-        user_id=user_id,
-        session_id="series_setup_outline_expander",
-        debug_dir=debug_dir,
-    )
+
+    min_outline_score = 8 if args.quality_mode == "quality" else 7
+    max_outline_rounds = 3 if args.quality_mode == "quality" else 2
+    outline_out: Dict[str, Any] = {}
+    outline_review_out: Dict[str, Any] = {}
+
+    for oi in range(1, max_outline_rounds + 1):
+        outline_session_id = f"series_setup_outline_expander_r{oi}"
+        outline_out = await _run_agent_json(
+            series_agents.episode_outline_expander_agent,
+            outline_prompt,
+            session_service=session_service,
+            user_id=user_id,
+            session_id=outline_session_id,
+            debug_dir=debug_dir,
+        )
+
+        review_prompt_base = (
+            "你是短剧内容总审片人。请评审下列 series_outline 的市场与题材质量并打分。\n"
+            "评估重点：题材匹配（若有 genre_rules）、故事吸引力、当前市场适配、关键转折是否恰当、节奏是否仓促、篇幅是否足以支撑完整短剧。\n\n"
+            f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
+            f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n\n"
+            f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
+            f"series_outline=\n{json.dumps(outline_out, ensure_ascii=False)}\n\n"
+        )
+        review_prompt = _maybe_inject_genre_rules(infer_text, review_prompt_base)
+        outline_review_out = await _run_agent_json(
+            series_agents.outline_review_agent,
+            review_prompt,
+            session_service=session_service,
+            user_id=user_id,
+            session_id=f"series_setup_outline_review_r{oi}",
+            debug_dir=debug_dir,
+        )
+        score = int(outline_review_out.get("overall_score_1to10") or 0)
+        hard_fails = outline_review_out.get("hard_fail_reasons") or []
+        if score >= min_outline_score and not hard_fails:
+            break
+        if oi < max_outline_rounds:
+            fix_text = "\n".join([f"- {x}" for x in (outline_review_out.get("must_fix") or [])])
+            risk_text = "\n".join([f"- {x}" for x in (outline_review_out.get("risks") or [])])
+            rewrite_brief = json.dumps(outline_review_out.get("rewrite_brief", {}), ensure_ascii=False)
+            outline_prompt = (
+                outline_prompt_base
+                + "\n【上一轮评审未过，请重写 series_outline】\n"
+                + f"score={score}, min_score={min_outline_score}\n"
+                + "must_fix:\n"
+                + (fix_text or "- 无（请至少修复节奏、转折与市场吸引力）")
+                + "\nrisks:\n"
+                + (risk_text or "- 无")
+                + "\nrewrite_brief:\n"
+                + rewrite_brief
+            )
+            outline_prompt = _maybe_inject_genre_rules(infer_text, outline_prompt)
 
     # 12) 角色设定（character_bible）
     cb_prompt_base = (
@@ -636,9 +808,11 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"series_outline=\n{json.dumps(outline_out, ensure_ascii=False)}\n"
     )
     cb_prompt = _maybe_inject_genre_rules(infer_text, cb_prompt_base)
-    cb_out = await _run_agent_json(
-        series_agents.character_bible_agent,
-        cb_prompt,
+    cb_out = await _run_agent_json_with_qc(
+        stage="character_bible",
+        agent=series_agents.character_bible_agent,
+        prompt=cb_prompt,
+        quality_mode=args.quality_mode,
         session_service=session_service,
         user_id=user_id,
         session_id="series_setup_character_bible",
@@ -664,6 +838,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "series_spine": series_spine_out,
         "anchor_beats": anchor_beats_out,
         "series_outline": outline_out,
+        "outline_review": outline_review_out,
         "character_bible": cb_out,
     }
 
@@ -676,6 +851,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     _dump_json(out_paths["series_spine"], series_spine_out)
     _dump_json(out_paths["anchor_beats"], anchor_beats_out)
     _dump_json(out_paths["series_outline"], outline_out)
+    _dump_json(out_paths["outline_review"], outline_review_out)
     _dump_json(out_paths["character_bible"], cb_out)
 
     # 初始化 memory + episode_batch（此时 L4_episodes 为空）
@@ -767,9 +943,11 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"episode_id={ep_id}\n"
         )
         function_prompt = _maybe_inject_genre_rules(infer_text, function_prompt_base)
-        function_out = await _run_agent_json(
-            series_agents.episode_function_agent,
-            function_prompt,
+        function_out = await _run_agent_json_with_qc(
+            stage="episode_function",
+            agent=series_agents.episode_function_agent,
+            prompt=function_prompt,
+            quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,
             session_id=f"episode_{ep_id}_function",
@@ -789,9 +967,11 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"episode_id={ep_id}\n"
         )
         plot_prompt = _maybe_inject_genre_rules(infer_text, plot_prompt_base)
-        plot_out = await _run_agent_json(
-            series_agents.episode_plot_agent,
-            plot_prompt,
+        plot_out = await _run_agent_json_with_qc(
+            stage="plot",
+            agent=series_agents.episode_plot_agent,
+            prompt=plot_prompt,
+            quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,
             session_id=f"episode_{ep_id}_plot",
@@ -810,9 +990,11 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"plot=\n{json.dumps(plot_out, ensure_ascii=False)}\n\n"
         )
         script_prompt = _maybe_inject_genre_rules(infer_text, script_prompt_base)
-        script_out = await _run_agent_json(
-            series_agents.episode_script_agent,
-            script_prompt,
+        script_out = await _run_agent_json_with_qc(
+            stage="script",
+            agent=series_agents.episode_script_agent,
+            prompt=script_prompt,
+            quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,
             session_id=f"episode_{ep_id}_script",
@@ -831,9 +1013,11 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"script=\n{json.dumps(script_out, ensure_ascii=False)}\n\n"
         )
         storyboard_prompt = _maybe_inject_genre_rules(infer_text, storyboard_prompt_base)
-        storyboard_out = await _run_agent_json(
-            series_agents.episode_storyboard_agent,
-            storyboard_prompt,
+        storyboard_out = await _run_agent_json_with_qc(
+            stage="storyboard",
+            agent=series_agents.episode_storyboard_agent,
+            prompt=storyboard_prompt,
+            quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,
             session_id=f"episode_{ep_id}_storyboard",
@@ -862,9 +1046,11 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"storyboard=\n{json.dumps(storyboard_out, ensure_ascii=False)}\n\n"
         )
         memory_prompt = _maybe_inject_genre_rules(infer_text, memory_prompt_base)
-        memory_out = await _run_agent_json(
-            series_agents.episode_memory_agent,
-            memory_prompt,
+        memory_out = await _run_agent_json_with_qc(
+            stage="memory",
+            agent=series_agents.episode_memory_agent,
+            prompt=memory_prompt,
+            quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,
             session_id=f"episode_{ep_id}_memory",
@@ -883,6 +1069,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             script_out=script_out,
             ep_id=ep_id,
             infer_text=infer_text,
+            quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,
             debug_dir=debug_dir,

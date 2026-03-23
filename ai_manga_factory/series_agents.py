@@ -188,6 +188,22 @@ episode_outline_expander_agent = Agent(
     ),
 )
 
+outline_review_agent = Agent(
+    name="outline_review_agent",
+    model=MODEL,
+    description="从题材匹配、市场吸引力、转折节奏与篇幅承载力评审 series_outline，并给出分数与返修建议。",
+    instruction=_json_only_instruction(
+        schema_hint='{\n  "overall_score_1to10": int,\n  "pass": bool,\n  "dimension_scores": {\n    "genre_fit_1to10": int,\n    "market_hook_1to10": int,\n    "turning_points_1to10": int,\n    "pacing_balance_1to10": int,\n    "length_support_1to10": int,\n    "closure_and_aftertaste_1to10": int\n  },\n  "hard_fail_reasons": [str],\n  "strengths": [str],\n  "risks": [str],\n  "must_fix": [str],\n  "rewrite_brief": {\n    "target_overall_score_1to10": int,\n    "must_keep": [str],\n    "must_change": [str],\n    "episode_level_adjustments": [str]\n  }\n}\n',
+        constraints=[
+            "只输出 JSON 对象。",
+            "必须结合输入的 genre_rules（若有）判断题材符合度，不得泛泛而谈。",
+            "必须评估故事吸引力、当下市场匹配度、关键转折恰当性、节奏是否仓促、篇幅是否能支撑完整短剧。",
+            "overall_score_1to10 取 1-10 整数；pass 仅当 overall_score_1to10 >= 8 且 hard_fail_reasons 为空时可为 true。",
+            "must_fix 至少给 3 条可执行建议；rewrite_brief 必须具体到可改写的分集层动作。",
+        ],
+    ),
+)
+
 character_bible_agent = Agent(
     name="character_bible_agent_series",
     model=MODEL,

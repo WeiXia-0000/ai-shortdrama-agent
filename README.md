@@ -18,7 +18,7 @@
 | L0 | `L0_setup/` | `01_series_setup.json`、`02_episode_pitch.json` |
 | L1 | `L1_season/` | `01_season_mainline.json`、`02_character_growth.json`、`03_world_reveal_pacing.json` |
 | L2 | `L2_spine/` | `01_coupling_map.json`、`02_series_spine.json`、`03_anchor_beats.json` |
-| L3 | `L3_series/` | `01_series_outline.json`、`02_character_bible.json`、`03_series_memory.json`、`04_episode_batch.json`、`05_series_manifest.json`（**阅读导航**：`reading_order`、依赖、单集流水线） |
+| L3 | `L3_series/` | `01_series_outline.json`、`01b_outline_review.json`、`02_character_bible.json`、`03_series_memory.json`、`04_episode_batch.json`、`05_series_manifest.json`（**阅读导航**：`reading_order`、依赖、单集流水线） |
 | L4 | `L4_episodes/<剧名>_第NNN集/` | `01_episode_function.json` → `06_package.json`（序号即阅读顺序） |
 
 **旧版已生成的剧**（如早期 `runs/`）：仍保持**根目录平铺** + `episodes/<剧名>_第NNN集/` 与原名 `episode_function.json` 等；`episode-batch` 会自动识别并**继续读写原路径**，无需改文件。
@@ -40,6 +40,28 @@
 示例（可按你实际环境调整版本）：
 
 ```bash
+pip install google-adk google-genai python-dotenv
+```
+
+### 2.5）创建并激活虚拟环境（推荐）
+
+Windows PowerShell：
+
+```powershell
+cd "d:\AI_Agent\ai-shortdrama-agent-adk"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install google-adk google-genai python-dotenv
+```
+
+macOS / Linux：
+
+```bash
+cd /path/to/ai-shortdrama-agent-adk
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
 pip install google-adk google-genai python-dotenv
 ```
 
@@ -80,6 +102,15 @@ python -m ai_manga_factory.run_series --mode series-setup `
   --quality-mode fast
 ```
 
+`quality` 模式（开启更严格质检与返修重试）：
+
+```powershell
+python -m ai_manga_factory.run_series --mode series-setup `
+  --theme "系统+求生+规则验证" `
+  --audience-view "青年男性，节奏快、爽点密集" `
+  --quality-mode quality
+```
+
 执行完成后，去 `ai_manga_factory/runs/<剧名>/` 找到上述 JSON 文件。
 
 ### 2）episode-batch（逐集生成并持续更新 series_memory）
@@ -89,7 +120,8 @@ python -m ai_manga_factory.run_series --mode series-setup `
 ```powershell
 python -m ai_manga_factory.run_series --mode episode-batch `
   --series-dir "d:\AI_Agent\ai-shortdrama-agent-adk\ai_manga_factory\runs\<剧名>" `
-  --episodes "1-3"
+  --episodes "1-3" `
+  --quality-mode quality
 ```
 
 运行过程中会把每集产物写入：
@@ -118,14 +150,18 @@ flowchart TD
     G --> H[series_spine_agent]
     H --> I[anchor_beats_agent]
     I --> J[episode_outline_expander_agent]
-    J --> K[character_bible_agent]
-    K --> L[series_outline.json + anchor_beats.json + character_bible.json + series_memory.json]
+    J --> JR[outline_review_agent]
+    JR -->|score<阈值| J
+    JR -->|score达标| K[character_bible_agent]
+    K --> L[series_outline.json + outline_review.json + anchor_beats.json + character_bible.json + series_memory.json]
     L --> M[episode_function_agent]
     M --> P[episode_plot_agent]
     P --> Q[episode_script_agent]
     Q --> R[episode_storyboard_agent]
     R --> S[episode_memory_agent]
-    S --> T[character_visual_patch_agent]
+    S --> SQ[quality_mode: 结构质检/缺字段返修重试]
+    SQ -->|通过| T[character_visual_patch_agent]
+    SQ -->|不通过重试| R
     T --> N[episodes/* + episode_batch.json + series_memory.json + character_bible.json]
 ```
 
@@ -143,7 +179,12 @@ flowchart TD
 8. `series_spine_agent`：产出全作骨架（延迟细化，不写具体分集）
 9. `anchor_beats_agent`：锁定关键承重点（数量动态，不固定）
 10. `episode_outline_expander_agent`：从 spine + anchors 展开成 `series_outline`
-11. `character_bible_agent`：生成 `character_bible.json`（含 `face_triptych_prompt_cn` 与 `body_triptych_prompt_cn`，均 <= 800）
+11. `outline_review_agent`：对大纲按题材匹配/市场吸引力/转折节奏/篇幅承载力等维度打分；低分会触发重写
+12. `character_bible_agent`：生成 `character_bible.json`（含 `face_triptych_prompt_cn` 与 `body_triptych_prompt_cn`，均 <= 800）
+
+> `outline_review_agent` 闭环规则（当前默认）：
+> - `quality` 模式：大纲最低分阈值为 8，最多重写 3 轮
+> - `fast` 模式：大纲最低分阈值为 7，最多重写 2 轮
 
 series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下；以下为新版分层目录）：
 
@@ -155,6 +196,7 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 - `L2_spine/02_series_spine.json`
 - `L2_spine/03_anchor_beats.json`
 - `L3_series/01_series_outline.json`
+- `L3_series/01b_outline_review.json`
 - `L3_series/02_character_bible.json`
 - `L0_setup/02_episode_pitch.json`（新版）；旧版为 `episode_pitch.json`
 - `L3_series/03_series_memory.json`（初始为空）
@@ -181,6 +223,8 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 6. `character_visual_patch_agent`（按需）：对比 `series_memory.characters` 与 `character_bible.main_characters` 的 `name`，对**新登场且尚未在圣经中**的角色生成与 `character_bible_agent` 同结构的条目（含 `appearance_lock`、`face_triptych_prompt_cn`≤800、`body_triptych_prompt_cn`≤800、`negative_prompt_cn` 等），合并写回 `character_bible.json`，便于后续集与 Seedance 一致用图。
 
 > 说明：新角色在本集仍是「先 script/storyboard、后 memory、再补 bible」；**下一集**起 pipeline 会读到更新后的 `character_bible.json`。
+>
+> `quality` 模式下，`episode_function/plot/script/storyboard/memory/char_visual_patch` 会启用阶段质检，不通过会自动带反馈重试（最多 3 轮）。
 
 `episode_function` 建议字段结构：
 
