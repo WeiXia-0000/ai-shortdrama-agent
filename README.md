@@ -5,29 +5,23 @@
 ## 你会得到什么
 
 1. `series-setup`：生成长篇系列的基础材料
-2. `episode-batch`：按集先生成 `episode_function`（本集功能卡），再生成 `plot / script / storyboard`，并更新 `series_memory`
+2. `episode-batch`：按集先生成 `episode_function`（本集功能卡），再生成 `plot / script / storyboard`，更新 `series_memory`；若本集 memory 中出现**尚未写入** `character_bible` 的新角色，会调用 `character_visual_patch_agent` 补全与主角同级的 Seedance 肖像并**合并写回** `character_bible.json`
 
 所有生成结果都会落在仓库内的：
 
 `ai_manga_factory/runs/`
 
-并且每个剧名目录下包含：
+**新版目录结构（`series-setup` 今后默认）**：按层级文件夹 + 文件名序号，一眼可读顺序：
 
-- `series_setup.json`
-- `series_outline.json`
-- `character_bible.json`
-- `episode_pitch.json`
-- `series_memory.json`
-- `episode_batch.json`
+| 层级 | 文件夹 | 主要内容（示例文件名） |
+|------|--------|------------------------|
+| L0 | `L0_setup/` | `01_series_setup.json`、`02_episode_pitch.json` |
+| L1 | `L1_season/` | `01_season_mainline.json`、`02_character_growth.json`、`03_world_reveal_pacing.json` |
+| L2 | `L2_spine/` | `01_coupling_map.json`、`02_series_spine.json`、`03_anchor_beats.json` |
+| L3 | `L3_series/` | `01_series_outline.json`、`02_character_bible.json`、`03_series_memory.json`、`04_episode_batch.json`、`05_series_manifest.json`（**阅读导航**：`reading_order`、依赖、单集流水线） |
+| L4 | `L4_episodes/<剧名>_第NNN集/` | `01_episode_function.json` → `06_package.json`（序号即阅读顺序） |
 
-以及每集子目录：
-
-- `episode_function.json`（本集在整季中的功能卡：承接 anchor、必须推进/继承、持久变化等）
-- `plot.json`
-- `script.json`
-- `storyboard.json`
-- `creative_scorecard.json`
-- `package.json`
+**旧版已生成的剧**（如早期 `runs/`）：仍保持**根目录平铺** + `episodes/<剧名>_第NNN集/` 与原名 `episode_function.json` 等；`episode-batch` 会自动识别并**继续读写原路径**，无需改文件。
 
 ## 环境准备
 
@@ -102,9 +96,9 @@ python -m ai_manga_factory.run_series --mode episode-batch `
 
 - `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/`
 
-并把更新后的 `series_memory.json` 回写到：
+并把更新后的 memory / bible / batch 回写到对应路径（新版在 `L3_series/`，旧版在根目录）：
 
-- `ai_manga_factory/runs/<剧名>/series_memory.json`
+- `.../L3_series/03_series_memory.json` 或 `.../series_memory.json`
 
 ## 总体工作流（多集闭环）
 
@@ -131,7 +125,8 @@ flowchart TD
     P --> Q[episode_script_agent]
     Q --> R[episode_storyboard_agent]
     R --> S[episode_memory_agent]
-    S --> N[episodes/* + episode_batch.json + series_memory.json]
+    S --> T[character_visual_patch_agent]
+    T --> N[episodes/* + episode_batch.json + series_memory.json + character_bible.json]
 ```
 
 ### 1）series-setup（生成系列基础材料）
@@ -148,32 +143,33 @@ flowchart TD
 8. `series_spine_agent`：产出全作骨架（延迟细化，不写具体分集）
 9. `anchor_beats_agent`：锁定关键承重点（数量动态，不固定）
 10. `episode_outline_expander_agent`：从 spine + anchors 展开成 `series_outline`
-11. `character_bible_agent`：生成 `character_bible.json`（含 `portrait_prompt_cn` <= 800 约束）
+11. `character_bible_agent`：生成 `character_bible.json`（含 `face_triptych_prompt_cn` 与 `body_triptych_prompt_cn`，均 <= 800）
 
-series-setup 输出固定落盘到：
+series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下；以下为新版分层目录）：
 
-- `ai_manga_factory/runs/<剧名>/series_setup.json`
-- `ai_manga_factory/runs/<剧名>/season_mainline.json`
-- `ai_manga_factory/runs/<剧名>/character_growth.json`
-- `ai_manga_factory/runs/<剧名>/world_reveal_pacing.json`
-- `ai_manga_factory/runs/<剧名>/coupling_map.json`
-- `ai_manga_factory/runs/<剧名>/series_spine.json`
-- `ai_manga_factory/runs/<剧名>/anchor_beats.json`
-- `ai_manga_factory/runs/<剧名>/series_outline.json`
-- `ai_manga_factory/runs/<剧名>/character_bible.json`
-- `ai_manga_factory/runs/<剧名>/episode_pitch.json`
-- `ai_manga_factory/runs/<剧名>/series_memory.json`（初始为空）
-- `ai_manga_factory/runs/<剧名>/episode_batch.json`（episodes 为空）
+- `L0_setup/01_series_setup.json`
+- `L1_season/01_season_mainline.json`
+- `L1_season/02_character_growth.json`
+- `L1_season/03_world_reveal_pacing.json`
+- `L2_spine/01_coupling_map.json`
+- `L2_spine/02_series_spine.json`
+- `L2_spine/03_anchor_beats.json`
+- `L3_series/01_series_outline.json`
+- `L3_series/02_character_bible.json`
+- `L0_setup/02_episode_pitch.json`（新版）；旧版为 `episode_pitch.json`
+- `L3_series/03_series_memory.json`（初始为空）
+- `L3_series/04_episode_batch.json`（episodes 为空）
+- `L3_series/05_series_manifest.json`（阅读顺序与依赖说明；旧版为根目录 `series_manifest.json`）
 
 ### 2）episode-batch（按集生成并更新 series_memory）
 
 `run_series.py --mode episode-batch` 只需要你提供 `--series-dir` 和 `--episodes`。
-脚本会从 `--series-dir` 自动读取：
+脚本会从 `--series-dir` 自动读取（**新版**在 `L3_series/`、`L2_spine/` 等；**旧版**在剧根目录，自动兼容）：
 
-- `series_outline.json`
-- `character_bible.json`
-- `series_memory.json`
-- `anchor_beats.json`（若存在，则供 `episode_function_agent` 关联 `linked_anchor_ids`；旧目录无此文件时为空对象）
+- `01_series_outline.json` 或 `series_outline.json`
+- `02_character_bible.json` 或 `character_bible.json`
+- `03_series_memory.json` 或 `series_memory.json`
+- `03_anchor_beats.json`（`L2_spine/`）或 `anchor_beats.json`（若存在，则供 `episode_function_agent` 关联 `linked_anchor_ids`；旧目录无此文件时为空对象）
 
 然后对每个 `episode_id` 依次执行：
 
@@ -182,6 +178,9 @@ series-setup 输出固定落盘到：
 3. `episode_script_agent`：生成口语化 script（须落实 `episode_function` 中的推进与认知变化）
 4. `episode_storyboard_agent`：生成 Seedance 可用分镜/字幕/提示词（含固定栏目模板）
 5. `episode_memory_agent`：更新并落盘 `series_memory`（回扣 `episode_function` 中的持久变化与线索强化）
+6. `character_visual_patch_agent`（按需）：对比 `series_memory.characters` 与 `character_bible.main_characters` 的 `name`，对**新登场且尚未在圣经中**的角色生成与 `character_bible_agent` 同结构的条目（含 `appearance_lock`、`face_triptych_prompt_cn`≤800、`body_triptych_prompt_cn`≤800、`negative_prompt_cn` 等），合并写回 `character_bible.json`，便于后续集与 Seedance 一致用图。
+
+> 说明：新角色在本集仍是「先 script/storyboard、后 memory、再补 bible」；**下一集**起 pipeline 会读到更新后的 `character_bible.json`。
 
 `episode_function` 建议字段结构：
 
@@ -203,17 +202,15 @@ series-setup 输出固定落盘到：
 
 每集最终写入到：
 
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/episode_function.json`
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/plot.json`
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/script.json`
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/storyboard.json`
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/creative_scorecard.json`
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/package.json`
+- 新版：`L4_episodes/<剧名>_第XXX集/01_episode_function.json` … `06_package.json`
+- 旧版：`episodes/<剧名>_第XXX集/episode_function.json` … `package.json`
 
 同时持续刷新：
 
-- `ai_manga_factory/runs/<剧名>/series_memory.json`
-- `ai_manga_factory/runs/<剧名>/episode_batch.json`
+- `L3_series/03_series_memory.json`（或旧版根目录同名文件）
+- `L3_series/02_character_bible.json`（有新角色时追加条目；或旧版根目录）
+- `L3_series/04_episode_batch.json`（或旧版根目录）
+- `L3_series/05_series_manifest.json`（每次 batch 结束重写；或旧版根目录 `series_manifest.json`）
 
 ### 题材规则注入（genres）
 

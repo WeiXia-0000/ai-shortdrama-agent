@@ -193,17 +193,40 @@ character_bible_agent = Agent(
     model=MODEL,
     description="从 series_outline 抽取主要角色并输出 character_bible。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "style_anchor": { "visual_style": str, "era_or_world": str, "camera_feel": str },\n  "main_characters": [\n    {\n      "name": str,\n      "gender": str,\n      "age_range": str,\n      "role": str,\n      "core_personality": [str],\n      "appearance_lock": {\n        "face_shape": str,\n        "hair": str,\n        "eyes": str,\n        "body_type": str,\n        "signature_features": [str],\n        "default_outfit": str,\n        "color_palette": [str]\n      },\n      "portrait_prompt_cn": str,\n      "negative_prompt_cn": str,\n      "consistency_rules": [str]\n    }\n  ]\n}\n',
+        schema_hint='{\n  "style_anchor": { "visual_style": str, "era_or_world": str, "camera_feel": str },\n  "main_characters": [\n    {\n      "name": str,\n      "gender": str,\n      "age_range": str,\n      "role": str,\n      "core_personality": [str],\n      "appearance_lock": {\n        "face_shape": str,\n        "hair": str,\n        "eyes": str,\n        "body_type": str,\n        "signature_features": [str],\n        "default_outfit": str,\n        "color_palette": [str]\n      },\n      "face_triptych_prompt_cn": str,\n      "body_triptych_prompt_cn": str,\n      "negative_prompt_cn": str,\n      "consistency_rules": [str]\n    }\n  ]\n}\n',
         constraints=[
-            "portrait_prompt_cn 必须是面向 Seedance 的中文详细肖像提示词，<=800 汉字。",
+            "face_triptych_prompt_cn 必须是面向 Seedance 的中文提示词，生成“脸部三视图（正面/左侧/右侧）”，<=800 汉字。",
+            "body_triptych_prompt_cn 必须是面向 Seedance 的中文提示词，生成“全身三视图（正面/左侧/右侧）”，且人物为标准站立姿势、无脸部细节强调，<=800 汉字。",
+            "body_triptych_prompt_cn 必须清楚描述服装着装（上装/下装/外套）、鞋履、配饰、材质与主色，并与 appearance_lock.default_outfit / color_palette 一致。",
             "negative_prompt_cn 建议 <=150 汉字，用于明确不要出现的元素/风格。",
             "appearance_lock 必须可复用以锁脸：不要只写‘帅/酷’，要写可观察的五官与穿搭要素。",
+            "两个提示词只能描述该角色本体形象，不得出现其他人物、互动关系、场景叙事、能量特效、道具剧情等额外元素。",
         ],
     ),
 )
 
 
 # ================== episode-batch 专职 agents ==================
+
+character_visual_patch_agent = Agent(
+    name="character_visual_patch_agent",
+    model=MODEL,
+    description="为 series_memory 中尚未写入 character_bible 的新登场角色补全与主角同级的 Seedance 肖像与外观锁定。",
+    instruction=_json_only_instruction(
+        schema_hint='{\n  "characters": [\n    {\n      "name": str,\n      "gender": str,\n      "age_range": str,\n      "role": str,\n      "core_personality": [str],\n      "appearance_lock": {\n        "face_shape": str,\n        "hair": str,\n        "eyes": str,\n        "body_type": str,\n        "signature_features": [str],\n        "default_outfit": str,\n        "color_palette": [str]\n      },\n      "face_triptych_prompt_cn": str,\n      "body_triptych_prompt_cn": str,\n      "negative_prompt_cn": str,\n      "consistency_rules": [str],\n      "first_appeared_episode": int\n    }\n  ]\n}\n',
+        constraints=[
+            "只输出 JSON 对象；characters 仅包含本次需要补全的新角色，不得重复已有 character_bible 中已存在同名条目。",
+            "face_triptych_prompt_cn 必须为中文、可直接投喂 Seedance，用于脸部三视图（正面/左侧/右侧），<=800 汉字。",
+            "body_triptych_prompt_cn 必须为中文、可直接投喂 Seedance，用于全身三视图（正面/左侧/右侧），标准站立姿势，<=800 汉字。",
+            "body_triptych_prompt_cn 必须包含完整着装信息：上装/下装/外套（如有）、鞋履、配饰、材质与主色，且与 appearance_lock.default_outfit / color_palette 一致。",
+            "negative_prompt_cn 建议 <=150 汉字。",
+            "appearance_lock 必须与 face_triptych_prompt_cn / body_triptych_prompt_cn 一致且可复用锁脸。",
+            "提示词只能描述角色本体，不得包含他人、互动动作、剧情事件、场景叙事、能量/特效/新增设定。",
+            "first_appeared_episode 必须与输入中该角色的登场集数一致。",
+            "风格须与输入的 style_anchor 一致，不得另起无关画风。",
+        ],
+    ),
+)
 
 episode_function_agent = Agent(
     name="episode_function_agent",
