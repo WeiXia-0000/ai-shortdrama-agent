@@ -1,11 +1,11 @@
-# ai-shortdrama-agent（短剧长篇生成工作流）
+# ai-shortdrama-agent（短剧长篇生产工作流）
 
-这是一个面向“短剧/微短剧”的长篇生成工作流，按固定阶段产出结构化 JSON，并在多集之间通过 `series_memory` 保持连续性。
+`ai-shortdrama-agent` 是一个面向短剧/微短剧创作的结构化生产引擎，提供从系列立项到分集生成的标准化流水线，输出可追踪、可复用、可二次开发的 JSON 资产。
 
-## 你会得到什么
+## 产品能力概览
 
-1. `series-setup`：生成长篇系列的基础材料
-2. `episode-batch`：按集先生成 `episode_function`（本集功能卡），再生成 `plot / script / storyboard`，更新 `series_memory`；若本集 memory 中出现**尚未写入** `character_bible` 的新角色，会调用 `character_visual_patch_agent` 补全与主角同级的 Seedance 肖像并**合并写回** `character_bible.json`
+1. `series-setup`：完成系列级资产生产（主线、角色成长、世界揭示、结构骨架、大纲与评审）
+2. `episode-batch`：完成分集级资产生产（功能卡、节拍、剧本、分镜）并持续更新全局记忆与角色圣经
 
 所有生成结果都会落在仓库内的：
 
@@ -25,7 +25,7 @@
 
 
 
-## 环境准备
+## 部署与环境准备
 
 ### 1）Python
 
@@ -85,13 +85,13 @@ pip install google-adk google-genai python-dotenv
 
 注意：密钥与生产数据（如 `runs/`）不要提交到 Git。
 
-## 使用方法（CLI）
+## 运行方式（CLI）
 
 入口脚本：
 
 - `python -m ai_manga_factory.run_series`
 
-### 1）series-setup（先生成系列大纲/角色/初始 memory）
+### 1）series-setup（生成系列资产）
 
 示例：
 
@@ -113,9 +113,9 @@ python -m ai_manga_factory.run_series --mode series-setup `
   --quality-mode quality
 ```
 
-执行完成后，去 `ai_manga_factory/runs/<剧名>/` 找到上述 JSON 文件。
+执行完成后，在 `ai_manga_factory/runs/<剧名>/` 查看系列级输出资产。
 
-### 2）episode-batch（逐集生成并持续更新 series_memory）
+### 2）episode-batch（生成分集资产并持续更新）
 
 示例（生成第 1-3 集）：
 
@@ -136,7 +136,7 @@ python -m ai_manga_factory.run_series --mode episode-batch `
 
 ## 总体工作流（多集闭环）
 
-整个流程由两个阶段构成，并由 `series_memory` 把跨集连续性“落盘 + 读取”。
+流程由系列资产层与分集资产层构成，并通过 `series_memory` 进行跨集状态同步，确保连续创作与稳定迭代。
 
 ### 流程图（GitHub 友好：横向分模块 + 模块内纵向递进）
 
@@ -216,9 +216,7 @@ flowchart LR
       P4["episode_storyboard_agent"]
       P5["episode_memory_agent"]
       P6["character_visual_patch_agent"]
-      P_OUT[" "]
       P1 --> P2 --> P3 --> P4 --> P5 --> P6
-      P6 --> P_OUT
     end
 
     subgraph E3["Module 3: Quality Gate"]
@@ -241,8 +239,7 @@ flowchart LR
 
     E_IN --> E1 --> E2
     P4 --> Q1
-    P_OUT --> R_ALL
-    style P_OUT fill:transparent,stroke:transparent,color:transparent
+    P6 --> R_ALL
 ```
 
 
@@ -345,7 +342,7 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 并从 `genres/genre_reference.json` 抽取对应的 `rules_block` 注入提示词，
 确保禁忌、节奏、语言铁律等在多步骤生成里一致生效。
 
-### 设计意图（为什么这样拆）
+### 设计原则（架构动机）
 
 - 先拆开定义 `整季主线/人物成长/世界揭示`，避免一个 agent 早期过度细化。
 - 用 `coupling_reconciler_agent` 强制对齐双向因果：  
@@ -375,7 +372,7 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 - `characters` 只包含“有名字的角色”，`群众/观众` 不入该表。
 - `episodes.open_threads` 用于跨集回扣与悬念延续。
 
-## 安全与仓库约束
+## 仓库与交付约束
 
 建议你始终遵守：
 
