@@ -13,15 +13,17 @@
 
 **新版目录结构（`series-setup` 今后默认）**：按层级文件夹 + 文件名序号，一眼可读顺序：
 
-| 层级 | 文件夹 | 主要内容（示例文件名） |
-|------|--------|------------------------|
-| L0 | `L0_setup/` | `01_series_setup.json`、`02_episode_pitch.json` |
-| L1 | `L1_season/` | `01_season_mainline.json`、`02_character_growth.json`、`03_world_reveal_pacing.json` |
-| L2 | `L2_spine/` | `01_coupling_map.json`、`02_series_spine.json`、`03_anchor_beats.json` |
-| L3 | `L3_series/` | `01_series_outline.json`、`01b_outline_review.json`、`02_character_bible.json`、`03_series_memory.json`、`04_episode_batch.json`、`05_series_manifest.json`（**阅读导航**：`reading_order`、依赖、单集流水线） |
-| L4 | `L4_episodes/<剧名>_第NNN集/` | `01_episode_function.json` → `06_package.json`（序号即阅读顺序） |
 
-**旧版已生成的剧**（如早期 `runs/`）：仍保持**根目录平铺** + `episodes/<剧名>_第NNN集/` 与原名 `episode_function.json` 等；`episode-batch` 会自动识别并**继续读写原路径**，无需改文件。
+| 层级  | 文件夹                       | 主要内容（示例文件名）                                                                                                                                                                               |
+| --- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L0  | `L0_setup/`               | `01_series_setup.json`、`02_episode_pitch.json`                                                                                                                                            |
+| L1  | `L1_season/`              | `01_season_mainline.json`、`02_character_growth.json`、`03_world_reveal_pacing.json`                                                                                                        |
+| L2  | `L2_spine/`               | `01_coupling_map.json`、`02_series_spine.json`、`03_anchor_beats.json`                                                                                                                      |
+| L3  | `L3_series/`              | `01_series_outline.json`、`01b_outline_review.json`、`02_character_bible.json`、`03_series_memory.json`、`04_episode_batch.json`、`05_series_manifest.json`（**阅读导航**：`reading_order`、依赖、单集流水线） |
+| L4  | `L4_episodes/<剧名>_第NNN集/` | `01_episode_function.json` → `06_package.json`（序号即阅读顺序）                                                                                                                                   |
+
+
+
 
 ## 环境准备
 
@@ -136,72 +138,114 @@ python -m ai_manga_factory.run_series --mode episode-batch `
 
 整个流程由两个阶段构成，并由 `series_memory` 把跨集连续性“落盘 + 读取”。
 
-### 流程图（series-setup 到 episode-batch）
+### 流程图（GitHub 友好：横向分模块 + 模块内纵向递进）
+
+#### A. `series-setup`（输入来源 / 评审闭环 / 输出文件）
 
 ```mermaid
 flowchart LR
-    %% ------------------------ 模块一：Series Setup ------------------------
-    subgraph M1[模块一：系列构建（Series Setup）]
-      direction LR
-      A1[market_research_agent] --> A2[trend_scout_series]
-      A2 --> A3[concept_judge_series]
-      A3 --> A4[season_mainline_agent]
-      A4 --> A5[character_growth_agent]
-      A4 --> A6[world_reveal_pacing_agent]
-      A5 --> A7[coupling_reconciler_agent]
-      A6 --> A7
-      A7 --> A8[series_spine_agent]
-      A8 --> A9[anchor_beats_agent]
-      A9 --> A10[episode_outline_expander_agent]
+    IN["Input: theme, audience, quality mode, genre rules"]
+
+    subgraph S1["Module 1: Concept and Mainline"]
+      direction TB
+      A1["market_research_agent"]
+      A2["trend_scout_series"]
+      A3["concept_judge_series"]
+      A4["season_mainline_agent"]
+      A1 --> A2 --> A3 --> A4
     end
 
-    %% ------------------------ 模块二：大纲评审闭环 ------------------------
-    subgraph M2[模块二：大纲评审与重写闭环]
-      direction LR
-      B1[outline_review_agent]
-      B2{score 达标?}
-      B3[重写 series_outline]
-      B4[character_bible_agent]
-      A10 --> B1 --> B2
-      B2 -- 否 --> B3 --> A10
-      B2 -- 是 --> B4
+    subgraph S2["Module 2: Structure Coupling"]
+      direction TB
+      B1["character_growth_agent"]
+      B2["world_reveal_pacing_agent"]
+      B3["coupling_reconciler_agent"]
+      B4["series_spine_agent"]
+      B5["anchor_beats_agent"]
+      B1 --> B3
+      B2 --> B3
+      B3 --> B4 --> B5
     end
 
-    %% ------------------------ 模块三：单集生产流水线 ------------------------
-    subgraph M3[模块三：单集生产（Episode Batch）]
-      direction LR
-      C1[episode_function_agent] --> C2[episode_plot_agent]
-      C2 --> C3[episode_script_agent]
-      C3 --> C4[episode_storyboard_agent]
-      C4 --> C5[episode_memory_agent]
-      C5 --> C6[character_visual_patch_agent]
+    subgraph S3["Module 3: Outline Review Loop"]
+      direction TB
+      C1["episode_outline_expander_agent"]
+      C2["outline_review_agent"]
+      C3{"Score pass?"}
+      C4["rewrite by must_fix"]
+      C5["character_bible_agent"]
+      C1 --> C2 --> C3
+      C3 -- "No" --> C4 --> C1
+      C3 -- "Yes" --> C5
     end
 
-    %% ------------------------ 模块四：质量门控 ------------------------
-    subgraph M4[模块四：质量门控（quality_mode）]
-      direction LR
-      D1[阶段质检: 缺字段/空字段/结构约束]
-      D2{通过?}
-      C4 --> D1 --> D2
-      D2 -- 否 --> C4
-      D2 -- 是 --> C5
+    subgraph O_ALL["Output Module"]
+      direction TB
+      O0[输出：立项与题材决策产物]
+      O1[输出：人物成长与世界揭示产物]
+      O2[输出：结构骨架与承重点产物]
+      O3[输出：系列核心产物（大纲/评审/角色圣经/记忆/索引）]
+      O0 --> O1 --> O2 --> O3
     end
 
-    %% ------------------------ 模块五：落盘产物 ------------------------
-    subgraph M5[模块五：落盘与可读结构]
-      direction LR
-      E1[L0~L3 系列文件: series_outline / outline_review / character_bible / series_memory]
-      E2[L4_episodes: 01_episode_function ~ 06_package]
-      E3[series_manifest: reading_order + depends_on]
-    end
-
-    B4 --> E1
-    E1 --> C1
-    C6 --> E2
-    C6 --> E1
-    E1 --> E3
-    E2 --> E3
+    IN --> S1 --> S2 --> S3 --> O_ALL
 ```
+
+
+
+#### B. `episode-batch`（输入来源 / 质量门控 / 输出文件）
+
+```mermaid
+flowchart LR
+    E_IN["Input: series_dir, episodes, quality mode"]
+
+    subgraph E1["Module 1: Read Inputs"]
+      direction TB
+      I1["series_outline"]
+      I2["character_bible"]
+      I3["series_memory"]
+      I4["anchor_beats optional"]
+      I1 --> I2 --> I3 --> I4
+    end
+
+    subgraph E2["Module 2: Episode Pipeline"]
+      direction TB
+      P1["episode_function_agent"]
+      P2["episode_plot_agent"]
+      P3["episode_script_agent"]
+      P4["episode_storyboard_agent"]
+      P5["episode_memory_agent"]
+      P6["character_visual_patch_agent"]
+      P_OUT[" "]
+      P1 --> P2 --> P3 --> P4 --> P5 --> P6
+      P6 --> P_OUT
+    end
+
+    subgraph E3["Module 3: Quality Gate"]
+      direction TB
+      Q1["stage validation"]
+      Q2{"Pass?"}
+      Q1 --> Q2
+      Q2 -- "No" --> P4
+      Q2 -- "Yes" --> P5
+    end
+
+    subgraph R_ALL["Output Module"]
+      direction TB
+      R0[输出：单集产物包（功能卡/节拍/剧本/分镜/评分）]
+      R1[输出：系列记忆更新]
+      R2[输出：角色圣经增量更新（按需）]
+      R3[输出：批次汇总与阅读索引更新]
+      R0 --> R1 --> R2 --> R3
+    end
+
+    E_IN --> E1 --> E2
+    P4 --> Q1
+    P_OUT --> R_ALL
+    style P_OUT fill:transparent,stroke:transparent,color:transparent
+```
+
+
 
 ### 1）series-setup（生成系列基础材料）
 
@@ -221,6 +265,7 @@ flowchart LR
 12. `character_bible_agent`：生成 `character_bible.json`（含 `face_triptych_prompt_cn` 与 `body_triptych_prompt_cn`，均 <= 800）
 
 > `outline_review_agent` 闭环规则（当前默认）：
+>
 > - `quality` 模式：大纲最低分阈值为 8，最多重写 3 轮
 > - `fast` 模式：大纲最低分阈值为 7，最多重写 2 轮
 
@@ -304,8 +349,8 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 
 - 先拆开定义 `整季主线/人物成长/世界揭示`，避免一个 agent 早期过度细化。
 - 用 `coupling_reconciler_agent` 强制对齐双向因果：  
-  世界观变化 -> 事件压力 -> 人物改变；  
-  人物改变 -> 决策变化 -> 推动下一次世界揭示。
+世界观变化 -> 事件压力 -> 人物改变；  
+人物改变 -> 决策变化 -> 推动下一次世界揭示。
 - `series_spine + anchor_beats` 先锁承重结构，再让分集展开，减少“55 集看起来热闹但空心”的风险。
 
 ## 数据结构约定（简表）
