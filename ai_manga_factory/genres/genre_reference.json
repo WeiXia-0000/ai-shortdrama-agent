@@ -2,6 +2,15 @@
   "horror": {
     "display_name": "恐怖",
     "id": "horror",
+    "capabilities": {
+      "uses_explicit_rules": false,
+      "requires_rule_execution_map": false,
+      "requires_visible_rule_punishment": false,
+      "has_hidden_mechanism": true,
+      "prefers_logic_trial": false,
+      "prefers_relationship_push": false,
+      "prefers_status_hierarchy_conflict": false
+    },
     "keywords": [
       "恐怖",
       "horror",
@@ -62,6 +71,15 @@
   "rule_horror": {
     "display_name": "规则怪谈",
     "id": "rule_horror",
+    "capabilities": {
+      "uses_explicit_rules": true,
+      "requires_rule_execution_map": true,
+      "requires_visible_rule_punishment": true,
+      "has_hidden_mechanism": true,
+      "prefers_logic_trial": true,
+      "prefers_relationship_push": false,
+      "prefers_status_hierarchy_conflict": false
+    },
     "keywords": [
       "规则怪谈",
       "无限流",
@@ -118,6 +136,15 @@
   "urban": {
     "display_name": "都市",
     "id": "urban",
+    "capabilities": {
+      "uses_explicit_rules": false,
+      "requires_rule_execution_map": false,
+      "requires_visible_rule_punishment": false,
+      "has_hidden_mechanism": false,
+      "prefers_logic_trial": false,
+      "prefers_relationship_push": false,
+      "prefers_status_hierarchy_conflict": true
+    },
     "keywords": [
       "都市",
       "urban",
@@ -175,6 +202,15 @@
   "modern_romance": {
     "display_name": "现代情感",
     "id": "modern_romance",
+    "capabilities": {
+      "uses_explicit_rules": false,
+      "requires_rule_execution_map": false,
+      "requires_visible_rule_punishment": false,
+      "has_hidden_mechanism": false,
+      "prefers_logic_trial": false,
+      "prefers_relationship_push": true,
+      "prefers_status_hierarchy_conflict": false
+    },
     "keywords": [
       "现代情感",
       "先婚后爱",
@@ -233,6 +269,15 @@
   "general": {
     "display_name": "通用",
     "id": "general",
+    "capabilities": {
+      "uses_explicit_rules": false,
+      "requires_rule_execution_map": false,
+      "requires_visible_rule_punishment": false,
+      "has_hidden_mechanism": false,
+      "prefers_logic_trial": false,
+      "prefers_relationship_push": false,
+      "prefers_status_hierarchy_conflict": false
+    },
     "keywords": [
       "通用",
       "general"

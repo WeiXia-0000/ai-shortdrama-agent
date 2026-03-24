@@ -363,8 +363,8 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 ### 题材规则注入（genres）
 
 在调用各 agent 之前，会基于上下文文本推断 `genre_key`，
-并从 `genres/genre_reference.json` 抽取对应的 `rules_block` 注入提示词，
-确保禁忌、节奏、语言铁律等在多步骤生成里一致生效。
+并从 `genres/genre_reference.json` 抽取对应的 `rules_block` 与 `capabilities`（如 `requires_rule_execution_map`、`uses_explicit_rules` 等）一并注入提示词，
+使禁忌、节奏、语言铁律与「是否强制 rule_execution_map」等题材开关在多步骤生成里一致生效。
 
 ### 设计原则（架构动机）
 

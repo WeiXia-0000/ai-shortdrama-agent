@@ -8,6 +8,17 @@ from typing import Any, Dict, Tuple
 PROJECT_ROOT = Path(__file__).resolve().parent
 GENRE_REFERENCE_PATH = PROJECT_ROOT / "genres" / "genre_reference.json"
 
+# 与 JSON 中 capabilities 字段对齐；未知 genre 或缺字段时兜底
+DEFAULT_CAPABILITIES: Dict[str, Any] = {
+    "uses_explicit_rules": False,
+    "requires_rule_execution_map": False,
+    "requires_visible_rule_punishment": False,
+    "has_hidden_mechanism": False,
+    "prefers_logic_trial": False,
+    "prefers_relationship_push": False,
+    "prefers_status_hierarchy_conflict": False,
+}
+
 
 def _load_genre_reference() -> Dict[str, Any]:
     if not GENRE_REFERENCE_PATH.exists():
@@ -16,6 +27,7 @@ def _load_genre_reference() -> Dict[str, Any]:
                 "display_name": "通用",
                 "id": "general",
                 "keywords": [],
+                "capabilities": dict(DEFAULT_CAPABILITIES),
                 "rules_block": "【题材规则包：通用】\n- 保持逻辑自洽，禁止道具天降。\n- 叙事尽量口语化、有画面、少报告腔。\n",
             }
         }
@@ -44,6 +56,49 @@ def infer_genre_from_text(text: str) -> str:
             best_score = score
 
     return best_key
+
+
+def get_genre_capabilities(genre_key: str) -> Dict[str, Any]:
+    """读取某题材的 capabilities，与 DEFAULT_CAPABILITIES 合并，保证布尔字段齐全。"""
+    ref = _load_genre_reference()
+    entry = ref.get(genre_key) or ref.get("general") or {}
+    raw = entry.get("capabilities")
+    if not isinstance(raw, dict):
+        raw = {}
+    out = dict(DEFAULT_CAPABILITIES)
+    for k, v in raw.items():
+        if k in DEFAULT_CAPABILITIES and isinstance(v, bool):
+            out[k] = v
+        elif k in DEFAULT_CAPABILITIES:
+            out[k] = bool(v) if v is not None else DEFAULT_CAPABILITIES[k]
+    return out
+
+
+def capabilities_to_prompt_block(capabilities: Dict[str, Any]) -> str:
+    """把能力开关转成固定格式的 prompt 前缀块，供各 agent 遵循。"""
+    caps = dict(DEFAULT_CAPABILITIES)
+    if isinstance(capabilities, dict):
+        for k in DEFAULT_CAPABILITIES:
+            if k in capabilities:
+                caps[k] = bool(capabilities[k])
+
+    lines = [
+        "【题材能力开关】（须与下文创作约束一致；不要与题材规则包矛盾）",
+        f"- current_capabilities.uses_explicit_rules: {caps['uses_explicit_rules']}",
+        f"- current_capabilities.requires_rule_execution_map: {caps['requires_rule_execution_map']}",
+        f"- current_capabilities.requires_visible_rule_punishment: {caps['requires_visible_rule_punishment']}",
+        f"- current_capabilities.has_hidden_mechanism: {caps['has_hidden_mechanism']}",
+        f"- current_capabilities.prefers_logic_trial: {caps['prefers_logic_trial']}",
+        f"- current_capabilities.prefers_relationship_push: {caps['prefers_relationship_push']}",
+        f"- current_capabilities.prefers_status_hierarchy_conflict: {caps['prefers_status_hierarchy_conflict']}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def infer_genre_context_for_prompt(prompt: str) -> Tuple[str, str, Dict[str, Any]]:
+    """返回 (genre_key, rules_block, capabilities)。"""
+    g = infer_genre_from_text(prompt)
+    return g, get_genre_rules_block(g), get_genre_capabilities(g)
 
 
 def get_genre_rules_block(genre_key: str) -> str:
@@ -97,7 +152,6 @@ def get_genre_rules_block(genre_key: str) -> str:
 
 
 def infer_genre_rules_for_prompt(prompt: str) -> Tuple[str, str]:
-    """返回 (genre_key, rules_block) 方便上层注入 prompt。"""
-    g = infer_genre_from_text(prompt)
-    return g, get_genre_rules_block(g)
-
+    """返回 (genre_key, rules_block) 方便上层注入 prompt。内部复用 infer_genre_context_for_prompt。"""
+    g, rules_block, _caps = infer_genre_context_for_prompt(prompt)
+    return g, rules_block

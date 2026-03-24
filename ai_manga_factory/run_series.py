@@ -15,7 +15,11 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from .agent import _strict_json_only
-from .genre_rules import infer_genre_rules_for_prompt
+from .genre_rules import (
+    capabilities_to_prompt_block,
+    get_genre_capabilities,
+    infer_genre_context_for_prompt,
+)
 from . import series_agents
 
 
@@ -142,7 +146,11 @@ def _validate_required_keys(obj: Dict[str, Any], required: List[str]) -> List[st
     return issues
 
 
-def _validate_stage_output(stage: str, obj: Dict[str, Any]) -> List[str]:
+def _validate_stage_output(
+    stage: str,
+    obj: Dict[str, Any],
+    genre_caps: Optional[Dict[str, Any]] = None,
+) -> List[str]:
     if stage == "character_bible":
         issues = _validate_required_keys(obj, ["style_anchor", "main_characters"])
         chars = obj.get("main_characters") or []
@@ -191,20 +199,35 @@ def _validate_stage_output(stage: str, obj: Dict[str, Any]) -> List[str]:
                         issues.append(f"viewer_payoff_design[{i}] 缺少或为空: {k}")
         return issues
     if stage == "plot":
+        caps = genre_caps if isinstance(genre_caps, dict) else get_genre_capabilities("general")
+        req_map = bool(caps.get("requires_rule_execution_map", False))
+        use_explicit = bool(caps.get("uses_explicit_rules", False))
+        min_rules = 2 if (req_map and use_explicit) else (1 if req_map else 0)
+
         issues = _validate_required_keys(
-            obj, ["episode_id", "title", "acts", "hook", "cliffhanger", "logic_check", "rule_execution_map"]
+            obj, ["episode_id", "title", "acts", "hook", "cliffhanger", "logic_check"]
         )
+        if "rule_execution_map" not in obj:
+            issues.append("缺少字段: rule_execution_map")
         rem = obj.get("rule_execution_map")
-        if not isinstance(rem, list) or len(rem) < 1:
-            issues.append("rule_execution_map 至少需要 1 条规则绑定")
-        else:
-            for i, row in enumerate(rem):
-                if not isinstance(row, dict):
-                    issues.append(f"rule_execution_map[{i}] 必须是对象")
-                    continue
-                for k in ("rule_id", "rule_text", "rule_layer", "trigger_beat", "feedback"):
-                    if _is_blank(row.get(k)):
-                        issues.append(f"rule_execution_map[{i}] 缺少或为空: {k}")
+        if not isinstance(rem, list):
+            issues.append("rule_execution_map 必须是数组（非规则题材可为 []）")
+            return issues
+        if req_map:
+            if len(rem) < min_rules:
+                issues.append(
+                    f"rule_execution_map 至少需要 {min_rules} 条可执行绑定（当前题材 requires_rule_execution_map=true）"
+                )
+        elif len(rem) > 0:
+            # 非强制题材：若写了条目则仍校验结构，避免半吊子对象
+            pass
+        for i, row in enumerate(rem):
+            if not isinstance(row, dict):
+                issues.append(f"rule_execution_map[{i}] 必须是对象")
+                continue
+            for k in ("rule_id", "rule_text", "rule_layer", "trigger_beat", "feedback"):
+                if _is_blank(row.get(k)):
+                    issues.append(f"rule_execution_map[{i}] 缺少或为空: {k}")
         return issues
     if stage == "script":
         issues = _validate_required_keys(obj, ["episode_id", "characters", "scenes"])
@@ -236,6 +259,7 @@ async def _run_agent_json_with_qc(
     session_id: str,
     debug_dir: Path,
     max_rounds: int = 3,
+    genre_caps: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if quality_mode != "quality":
         return await _run_agent_json(
@@ -259,7 +283,7 @@ async def _run_agent_json_with_qc(
             session_id=sid,
             debug_dir=debug_dir,
         )
-        issues = _validate_stage_output(stage, out)
+        issues = _validate_stage_output(stage, out, genre_caps=genre_caps)
         if not issues:
             return out
         last_issues = issues
@@ -299,8 +323,11 @@ def _parse_episode_ids(s: str) -> List[int]:
 
 
 def _maybe_inject_genre_rules(infer_text: str, base_prompt: str) -> str:
-    _, rules_block = infer_genre_rules_for_prompt(infer_text)
-    return (rules_block + "\n\n" + base_prompt).strip()
+    """注入题材规则包 + 能力开关 + 当前推断 genre_key（保持函数名兼容）。"""
+    genre_key, rules_block, caps = infer_genre_context_for_prompt(infer_text)
+    cap_block = capabilities_to_prompt_block(caps)
+    header = f"【当前推断题材 genre_key】{genre_key}\n\n"
+    return (header + rules_block + "\n" + cap_block + "\n" + base_prompt).strip()
 
 
 def _episode_outline_row(series_outline: Dict[str, Any], ep_id: int) -> Dict[str, Any]:
@@ -565,6 +592,7 @@ async def _patch_character_bible_new_characters(
     session_service: InMemorySessionService,
     user_id: str,
     debug_dir: Path,
+    genre_caps: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     missing = _memory_chars_missing_bible(series_memory, character_bible)
     if not missing:
@@ -592,6 +620,7 @@ async def _patch_character_bible_new_characters(
         user_id=user_id,
         session_id=f"episode_{ep_id}_char_visual_patch",
         debug_dir=debug_dir,
+        genre_caps=genre_caps,
     )
     main = character_bible.setdefault("main_characters", [])
     existing = _character_bible_name_set(character_bible)
@@ -617,6 +646,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
 
     infer_text = "\n".join([args.theme or "", args.audience_view or "", args.series_title or ""]).strip()
     infer_text = infer_text or (args.series_title or "series")
+    _, _, setup_genre_caps = infer_genre_context_for_prompt(infer_text)
 
     # 1) 市场调研
     market_prompt_base = (
@@ -850,6 +880,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         user_id=user_id,
         session_id="series_setup_character_bible",
         debug_dir=debug_dir,
+        genre_caps=setup_genre_caps,
     )
 
     series_title = outline_out.get("title") or args.series_title or "series"
@@ -961,6 +992,7 @@ async def _run_plot_phase_with_optional_judge(
     user_id: str,
     debug_dir: Path,
     extra_feedback: str = "",
+    genre_caps: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     """生成 plot；若开启分集 judge，则在 plot 后跑 episode_plot_judge 并重写 plot。"""
     plot_feedback = (extra_feedback or "").strip()
@@ -982,6 +1014,7 @@ async def _run_plot_phase_with_optional_judge(
             user_id=user_id,
             session_id=f"episode_{ep_id}_plot_p{pi}",
             debug_dir=debug_dir,
+            genre_caps=genre_caps,
         )
         if not use_judges:
             return plot_out, None
@@ -1066,6 +1099,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
     session_service = InMemorySessionService()
 
     infer_text = (series_outline.get("logline") or "") + "\n" + (series_outline.get("overall_arc") or "")
+    _, _, batch_genre_caps = infer_genre_context_for_prompt(infer_text)
 
     # 如果用户希望“续写”，先加载现有 episode_batch.json
     existing_batch_path = paths["episode_batch"]
@@ -1102,6 +1136,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             user_id=user_id,
             session_id=f"episode_{ep_id}_function",
             debug_dir=debug_dir,
+            genre_caps=batch_genre_caps,
         )
         if function_out.get("episode_id") != ep_id:
             function_out["episode_id"] = ep_id
@@ -1112,7 +1147,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
         max_pkg_rounds = (jr + 1) if use_judges else 1
 
         plot_prompt_base = (
-            "生成本集 plot（JSON 输出，必须包含 rule_execution_map）。\n"
+            "生成本集 plot（JSON 输出，字段须含 rule_execution_map 数组；若【题材能力开关】requires_rule_execution_map=false 则允许为空数组，禁止硬造规则）。\n"
             "须落实 episode_function.viewer_payoff_design 与 must_advance/must_inherit。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
@@ -1122,7 +1157,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
 
         script_prompt_base = (
             "生成本集 script（JSON 输出）。\n"
-            "必须落实 viewer_payoff_design 与 plot.rule_execution_map。\n"
+            "须落实 viewer_payoff_design；plot.rule_execution_map 仅当 requires_rule_execution_map=true 或非空时强制对齐。\n"
             "输入包含：episode_function、series_outline、character_bible、series_memory、plot。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
@@ -1133,7 +1168,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
 
         storyboard_prompt_base = (
             "生成本集 storyboard（JSON 输出，用于 Seedance）。\n"
-            "须落实 viewer_payoff_design、plot.rule_execution_map 与 script。\n"
+            "须落实 viewer_payoff_design 与 script；若 plot.rule_execution_map 非空则画面须对齐其触发与反馈。\n"
             "输入包含：episode_function、plot、series_outline、character_bible、series_memory、script。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"plot=\n{json.dumps({}, ensure_ascii=False)}\n\n"
@@ -1190,6 +1225,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     user_id=user_id,
                     debug_dir=debug_dir,
                     extra_feedback=plot_extra,
+                    genre_caps=batch_genre_caps,
                 )
                 _dump_json(ep_files["plot"], plot_out)
 
@@ -1203,6 +1239,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     user_id=user_id,
                     session_id=f"episode_{ep_id}_script_g{gi}",
                     debug_dir=debug_dir,
+                    genre_caps=batch_genre_caps,
                 )
                 _dump_json(ep_files["script"], script_out)
 
@@ -1215,6 +1252,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     user_id=user_id,
                     session_id=f"episode_{ep_id}_storyboard_g{gi}",
                     debug_dir=debug_dir,
+                    genre_caps=batch_genre_caps,
                 )
                 _dump_json(ep_files["storyboard"], storyboard_out)
 
@@ -1228,6 +1266,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     user_id=user_id,
                     session_id=f"episode_{ep_id}_script_g{gi}",
                     debug_dir=debug_dir,
+                    genre_caps=batch_genre_caps,
                 )
                 _dump_json(ep_files["script"], script_out)
                 storyboard_out = await _run_agent_json_with_qc(
@@ -1239,6 +1278,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     user_id=user_id,
                     session_id=f"episode_{ep_id}_storyboard_g{gi}",
                     debug_dir=debug_dir,
+                    genre_caps=batch_genre_caps,
                 )
                 _dump_json(ep_files["storyboard"], storyboard_out)
 
@@ -1254,6 +1294,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     user_id=user_id,
                     session_id=f"episode_{ep_id}_storyboard_g{gi}",
                     debug_dir=debug_dir,
+                    genre_caps=batch_genre_caps,
                 )
                 _dump_json(ep_files["storyboard"], storyboard_out)
 
@@ -1324,6 +1365,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             user_id=user_id,
             session_id=f"episode_{ep_id}_memory",
             debug_dir=debug_dir,
+            genre_caps=batch_genre_caps,
         )
         if not isinstance(memory_out, dict) or "episodes" not in memory_out or "characters" not in memory_out:
             raise RuntimeError("episode_memory_agent 输出缺少 episodes/characters 字段。")
@@ -1342,6 +1384,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             session_service=session_service,
             user_id=user_id,
             debug_dir=debug_dir,
+            genre_caps=batch_genre_caps,
         )
         _dump_json(character_bible_path, character_bible)
 
