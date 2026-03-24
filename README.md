@@ -193,58 +193,57 @@ flowchart LR
 
 
 
-#### B. `episode-batch`（输入来源 / 质量门控 / 输出文件）
-
+#### B. `episode-batch`
 ```mermaid
 flowchart LR
-    E_IN["Input: series_dir, episodes, quality mode"]
 
-    subgraph E1["Module 1: Read Inputs"]
-      direction TB
-      I1["series_outline"]
-      I2["character_bible"]
-      I3["series_memory"]
-      I4["anchor_beats optional"]
-      I1 --> I2 --> I3 --> I4
-    end
+  IN["Input<br/>series_dir / episodes / quality mode"]
 
-    subgraph E2["Module 2: Episode Pipeline"]
-      direction TB
-      P1["episode_function_agent<br/>+ viewer_payoff_design"]
-      P2["episode_plot_agent<br/>+ rule_execution_map"]
-      PJ["episode_plot_judge_agent"]
-      P3["episode_script_agent"]
-      P4["episode_storyboard_agent"]
-      PK["episode_package_judge_agent"]
-      SC["05_creative_scorecard.json"]
-      P5["episode_memory_agent"]
-      P6["character_visual_patch_agent"]
-      P1 --> P2 --> PJ --> P3 --> P4 --> PK --> SC --> P5 --> P6
-    end
+  subgraph E1["Module 1: Read Series State"]
+    direction TB
+    I1["series_outline"]
+    I2["character_bible"]
+    I3["series_memory"]
+    I4["anchor_beats"]
+    I1 --> I2 --> I3 --> I4
+  end
 
-    subgraph E3["Module 3: Quality Gate"]
-      direction TB
-      Q1["stage JSON 校验<br/>quality 模式多轮返修"]
-      Q2["plot_judge / package_judge<br/>未过则按 scope 返工"]
-      Q1 --> Q2
-    end
+  subgraph E2["Module 2: Episode Pipeline"]
+    direction TB
+    F["episode_function"]
+    P["episode_plot"]
+    PJ{"plot_judge"}
+    S["episode_script"]
+    SB["episode_storyboard"]
 
-    subgraph R_ALL["Output Module"]
-      direction TB
-      R0[输出：单集产物包（含真实 creative_scorecard）]
-      R1[输出：系列记忆更新]
-      R2[输出：角色圣经增量更新（按需）]
-      R3[输出：批次汇总与阅读索引更新]
-      R0 --> R1 --> R2 --> R3
-    end
+    F --> P --> PJ
+    PJ -- "No → rewrite plot" --> P
+    PJ -- "Yes" --> S --> SB
+  end
 
-    E_IN --> E1 --> E2
-    P2 --> Q1
-    PK --> Q2
-    P6 --> R_ALL
+  subgraph E3["Module 3: Package Gate"]
+    direction TB
+    PKG{"package_judge"}
+  end
+
+  subgraph E4["Output Module"]
+    direction TB
+    O1["episode_package.json"]
+    O2["series_memory.json update"]
+    O3["character_bible.json patch"]
+    O4["episode_batch.json"]
+    O5["series_manifest.json"]
+    O1 --> O2 --> O3 --> O4 --> O5
+  end
+
+  IN --> E1 --> E2
+  E2 --> E3
+  E3 -- "Yes → accept package" --> E4
+
+  E3 -- "No (scope=plot)" --> P
+  E3 -- "No (scope=script)" --> S
+  E3 -- "No (scope=storyboard)" --> SB
 ```
-
-
 
 ### 1）series-setup（生成系列基础材料）
 
