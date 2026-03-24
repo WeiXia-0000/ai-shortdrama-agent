@@ -1,53 +1,65 @@
-# ai-shortdrama-agent（短剧长篇生产工作流）
+# ai-shortdrama-agent
 
-`ai-shortdrama-agent` 是一个面向短剧/微短剧创作的结构化生产引擎，提供从系列立项到分集生成的标准化流水线，输出可追踪、可复用、可二次开发的 JSON 资产。
+**短剧 / 微短剧长篇结构化生产引擎** — 用固定流水线把「立项 → 大纲 → 分集剧本与分镜」打成**可版本管理、可对接后期与视频工具**的 JSON 资产，并用 **`series_memory` 跨集对齐状态**，降低长剧创作里常见的**断层、吃设定、爽点落空**问题。
 
-## 产品能力概览
+适合：内容团队做**季播规划**、制片方要**可审计物料**、个人作者需要**从大纲一路生成到 Seedance 友好分镜**的工作流。
 
-1. `series-setup`：完成系列级资产生产（主线、角色成长、世界揭示、结构骨架、大纲与评审）
-2. `episode-batch`：完成分集级资产生产（功能卡、节拍、剧本、分镜）并持续更新全局记忆与角色圣经
+---
 
-所有生成结果都会落在仓库内的：
+## 解决什么问题
 
-`ai_manga_factory/runs/`
+| 痛点 | 本仓库的做法 |
+|------|----------------|
+| 写到后面忘了前面 | `series_memory` + 每集 `episode_function` 强制承接线索与锚点 |
+| 大纲很炫、单集飘 | 先 **spine / anchor**，再分集；分集前先有「本集在整季的功能卡」 |
+| 规则怪谈写成四不像 | `genre_reference.json` 注入 **题材规则 + capabilities**（如是否强制 `rule_execution_map`） |
+| 产出散乱难对接 | **L0–L4 分层目录 + 序号文件名**；`05_series_manifest.json` 给阅读顺序与依赖 |
+| 质量不可控 | `quality` 模式：**阶段 JSON 质检** + 可选 **plot / package 双层 Judge**（见下文流程图） |
 
-**新版目录结构（`series-setup` 今后默认）**：按层级文件夹 + 文件名序号，一眼可读顺序：
+---
 
+## 核心能力一览
 
-| 层级  | 文件夹                       | 主要内容（示例文件名）                                                                                                                                                                               |
-| --- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L0  | `L0_setup/`               | `01_series_setup.json`、`02_episode_pitch.json`                                                                                                                                            |
-| L1  | `L1_season/`              | `01_season_mainline.json`、`02_character_growth.json`、`03_world_reveal_pacing.json`                                                                                                        |
-| L2  | `L2_spine/`               | `01_coupling_map.json`、`02_series_spine.json`、`03_anchor_beats.json`                                                                                                                      |
-| L3  | `L3_series/`              | `01_series_outline.json`、`01b_outline_review.json`、`02_character_bible.json`、`03_series_memory.json`、`04_episode_batch.json`、`05_series_manifest.json`（**阅读导航**：`reading_order`、依赖、单集流水线） |
-| L4  | `L4_episodes/<剧名>_第NNN集/` | `01_episode_function.json` → `06_package.json`（序号即阅读顺序）                                                                                                                                   |
+- **两阶段 CLI**：`series-setup`（系列资产）→ `episode-batch`（按集生成并回写记忆）
+- **多专职 Agent 流水线**：市场与概念 → 主线与人物成长 → 世界揭示与耦合 → 大纲与**大纲评审闭环** → 角色圣经（含 Seedance 肖像提示词约束）
+- **分集管线**：功能卡（含观众爽点设计）→ 节拍 plot（条件化 `rule_execution_map`）→ 剧本 → 分镜 →（可选）评审 → 记忆更新 → 新角色视觉补丁写回圣经
+- **题材感知**：同一套 Agent，通过 **`capabilities` 开关**区分规则怪谈 / 都市 / 情感等，避免非规则题材被硬写成「伪规则剧」
+- **输出即协议**：JSON schema 稳定，便于接剪辑、TTS、视频生成（如 Seedance）或内部 CMS
 
+---
 
+## 工作原理（一页读懂）
 
-
-## 部署与环境准备
-
-### 1）Python
-
-建议使用 Python 3.10+。
-
-### 2）依赖
-
-项目代码使用了以下包（按需安装即可）：
-
-- `google-adk`（ADK Runner/Agent/Session）
-- `google-genai`（模型调用）
-- `python-dotenv`（加载 `.env`）
-
-示例（可按你实际环境调整版本）：
-
-```bash
-pip install google-adk google-genai python-dotenv
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  series-setup    生成「整季怎么讲」：主线、成长线、骨架、分集大纲、圣经  │
+└────────────────────────────┬────────────────────────────────────┘
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  episode-batch   按集生成「这一集干什么 + 怎么拍」并更新全局记忆      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.5）创建并激活虚拟环境（推荐）
+| 模块 | 职责 |
+|------|------|
+| **系列层** | 立项与市场判断 → 概念评审 → 季内结构（spine / anchors）→ 分集大纲 → 大纲打分与返修 → 角色圣经 |
+| **分集层** | 本集功能卡与爽点 → 节拍与（按需）规则绑定表 → 剧本 → 分镜 → 可选整包评审 → `series_memory` 落盘 |
+| **跨集记忆** | `series_memory` 汇总分集摘要、线索、角色状态；下一集自动读入，减少幻觉与吃书 |
 
-Windows PowerShell：
+更细的 Agent 顺序与**评审回路**，见下方 **流程图**。
+
+---
+
+## 快速开始
+
+### 环境要求
+
+- Python **3.10+**
+- 依赖：`google-adk`、`google-genai`、`python-dotenv`
+
+### 1）安装依赖（推荐虚拟环境）
+
+**Windows PowerShell**
 
 ```powershell
 cd "d:\AI_Agent\ai-shortdrama-agent-adk"
@@ -57,7 +69,7 @@ pip install -U pip
 pip install google-adk google-genai python-dotenv
 ```
 
-macOS / Linux：
+**macOS / Linux**
 
 ```bash
 cd /path/to/ai-shortdrama-agent-adk
@@ -67,33 +79,16 @@ pip install -U pip
 pip install google-adk google-genai python-dotenv
 ```
 
-## 关键源码依赖（必须存在）
+### 2）配置 API Key
 
-`run_series.py` 会依赖仓库中的：
+在 **`ai_manga_factory/.env`** 中配置（**切勿提交到 Git**）：
 
-- `ai_manga_factory/agent.py`（提供 `root_agent`、语言策略等）
-- `ai_manga_factory/__init__.py`（确保包导入正常）
+- `GOOGLE_API_KEY`（必填）
+- `GOOGLE_GENAI_USE_VERTEXAI`（可选，视你的接入方式）
 
-如果你采用“只推指定文件”的策略到远端，请确保部署环境里这些文件也能被访问到（否则命令会导入失败）。
+### 3）跑通一条最小链路
 
-### 3）API Key（必须）
-
-在 `ai_manga_factory/.env` 放置你的密钥，至少包含：
-
-- `GOOGLE_API_KEY`（Gemini/VertexAI 使用）
-- `GOOGLE_GENAI_USE_VERTEXAI`（可选，按你环境配置）
-
-注意：密钥与生产数据（如 `runs/`）不要提交到 Git。
-
-## 运行方式（CLI）
-
-入口脚本：
-
-- `python -m ai_manga_factory.run_series`
-
-### 1）series-setup（生成系列资产）
-
-示例：
+**① 系列立项（生成整季资产）**
 
 ```powershell
 cd "d:\AI_Agent\ai-shortdrama-agent-adk"
@@ -104,20 +99,7 @@ python -m ai_manga_factory.run_series --mode series-setup `
   --quality-mode fast
 ```
 
-`quality` 模式（开启更严格质检与返修重试）：
-
-```powershell
-python -m ai_manga_factory.run_series --mode series-setup `
-  --theme "系统+求生+规则验证" `
-  --audience-view "青年男性，节奏快、爽点密集" `
-  --quality-mode quality
-```
-
-执行完成后，在 `ai_manga_factory/runs/<剧名>/` 查看系列级输出资产。
-
-### 2）episode-batch（生成分集资产并持续更新）
-
-示例（生成第 1-3 集）：
+**② 分集批量（在 `runs/<剧名>/` 下执行）**
 
 ```powershell
 python -m ai_manga_factory.run_series --mode episode-batch `
@@ -126,21 +108,51 @@ python -m ai_manga_factory.run_series --mode episode-batch `
   --quality-mode quality
 ```
 
-运行过程中会把每集产物写入：
+- **`fast`**：省调用，分集 Judge 默认关闭（可加 `--episode-judge` 打开）。
+- **`quality`**：更严 JSON 质检 + 默认开启 **plot / package Judge**（可用 `--no-episode-judge` 关闭）；`--judge-retries` 控制重试轮次。
 
-- `ai_manga_factory/runs/<剧名>/episodes/<剧名>_第XXX集/`
+**入口统一为**：`python -m ai_manga_factory.run_series`
 
-并把更新后的 memory / bible / batch 回写到对应路径（新版在 `L3_series/`，旧版在根目录）：
+---
 
-- `.../L3_series/03_series_memory.json` 或 `.../series_memory.json`
+## 输出落在哪里
 
-## 总体工作流（多集闭环）
+所有生成物默认在：
 
-流程由系列资产层与分集资产层构成，并通过 `series_memory` 进行跨集状态同步，确保连续创作与稳定迭代。
+`ai_manga_factory/runs/<剧名>/`
 
-### 流程图（GitHub 友好：横向分模块 + 模块内纵向递进）
+**新版分层目录（`series-setup` 默认）** — 文件夹 + 序号文件名，方便交付与 diff：
 
-#### A. `series-setup`（输入来源 / 评审闭环 / 输出文件）
+| 层级 | 文件夹 | 主要内容（示例） |
+|------|--------|------------------|
+| **L0** | `L0_setup/` | `01_series_setup.json`、`02_episode_pitch.json` |
+| **L1** | `L1_season/` | 整季主线、人物成长、世界揭示节奏 |
+| **L2** | `L2_spine/` | 耦合图、系列骨架、承重锚点 |
+| **L3** | `L3_series/` | 分集大纲、大纲评审、角色圣经、`series_memory`、`episode_batch`、**`05_series_manifest.json`（阅读导航）** |
+| **L4** | `L4_episodes/<剧名>_第NNN集/` | `01_episode_function.json` … `06_package.json` |
+
+---
+
+## 关键源码依赖
+
+`python -m ai_manga_factory.run_series` 至少需要同包内：
+
+- `run_series.py`（入口）
+- `series_agents.py`、`genre_rules.py`、`creative_constants.py`（模型与中文策略、JSON 兜底）
+- `genres/`（如 `genre_reference.json`）
+- `__init__.py`
+
+仅拷贝部分文件到服务器时，请带上以上文件与目录，否则导入会失败。
+
+---
+
+## 总体工作流与流程图
+
+系列资产与分集资产通过 **`series_memory`** 形成闭环：每一集结束更新记忆，下一集读取，保证**跨集连续创作**可迭代。
+
+下列流程图与上文「工作原理」一致，便于对外评审或 onboarding：**A = 系列立项**，**B = 分集生产（含 Judge 合格 / 不合格分支示意）**。
+
+### A. `series-setup`（输入 / 评审闭环 / 输出）
 
 ```mermaid
 flowchart LR
@@ -191,9 +203,8 @@ flowchart LR
     IN --> S1 --> S2 --> S3 --> O_ALL
 ```
 
+### B. `episode-batch`（分集流水线 + 门控）
 
-
-#### B. `episode-batch`
 ```mermaid
 flowchart LR
 
@@ -245,81 +256,49 @@ flowchart LR
   E3 -- "No (scope=storyboard)" --> SB
 ```
 
-### 1）series-setup（生成系列基础材料）
+> **Judge 说明**：`quality` 默认开启；`fast` 可加 `--episode-judge`；`--no-episode-judge` 可关闭。详细合格/不合格路径与 `rewrite_scope` 见下文「分集阶段说明」。
 
-`run_series.py --mode series-setup` 会按顺序调用（均要求输出结构化 JSON）：
+---
 
-1. `market_research_agent`：生成市场与创作方向 `market_report`
-2. `trend_scout_series`：生成 3 个长篇系列概念候选
-3. `concept_judge_series`：评审并推荐 1 个概念
-4. `season_mainline_agent`：先定义整季主线（只给方向，不给分集细节）
-5. `character_growth_agent`：定义人物成长路径（人物成长主导）
-6. `world_reveal_pacing_agent`：定义世界观揭示节奏
-7. `coupling_reconciler_agent`：对齐“人物成长线”与“世界揭示线”的双向因果链
-8. `series_spine_agent`：产出全作骨架（延迟细化，不写具体分集）
-9. `anchor_beats_agent`：锁定关键承重点（数量动态，不固定）
-10. `episode_outline_expander_agent`：从 spine + anchors 展开成 `series_outline`
-11. `outline_review_agent`：对大纲按题材匹配/市场吸引力/转折节奏/篇幅承载力等维度打分；低分会触发重写
-12. `character_bible_agent`：生成 `character_bible.json`（含 `face_triptych_prompt_cn` 与 `body_triptych_prompt_cn`，均 <= 800）
+## 系列阶段说明（`series-setup`）
 
-> `outline_review_agent` 闭环规则（当前默认）：
->
-> - `quality` 模式：大纲最低分阈值为 8，最多重写 3 轮
-> - `fast` 模式：大纲最低分阈值为 7，最多重写 2 轮
+`run_series.py --mode series-setup` 按顺序调用各 Agent（均输出结构化 JSON），典型顺序：
 
-series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下；以下为新版分层目录）：
+1. 市场调研 → 2. 三个系列概念 → 3. 概念评审 → 4. 整季主线 → 5. 人物成长 → 6. 世界揭示节奏 → 7. 人物线/世界线耦合 → 8. 系列骨架 → 9. 承重锚点 → 10. 展开分集大纲 → 11. **大纲评审**（未过则带 `must_fix` 重写）→ 12. 角色圣经
 
-- `L0_setup/01_series_setup.json`
-- `L1_season/01_season_mainline.json`
-- `L1_season/02_character_growth.json`
-- `L1_season/03_world_reveal_pacing.json`
-- `L2_spine/01_coupling_map.json`
-- `L2_spine/02_series_spine.json`
-- `L2_spine/03_anchor_beats.json`
-- `L3_series/01_series_outline.json`
-- `L3_series/01b_outline_review.json`
-- `L3_series/02_character_bible.json`
-- `L0_setup/02_episode_pitch.json`（新版）；旧版为 `episode_pitch.json`
-- `L3_series/03_series_memory.json`（初始为空）
-- `L3_series/04_episode_batch.json`（episodes 为空）
-- `L3_series/05_series_manifest.json`（阅读顺序与依赖说明；旧版为根目录 `series_manifest.json`）
+**大纲评审默认阈值**
 
-### 2）episode-batch（按集生成并更新 series_memory）
+- `quality`：最低分 **8**，最多 **3** 轮重写  
+- `fast`：最低分 **7**，最多 **2** 轮重写  
 
-`run_series.py --mode episode-batch` 只需要你提供 `--series-dir` 和 `--episodes`。
-脚本会从 `--series-dir` 自动读取（**新版**在 `L3_series/`、`L2_spine/` 等；**旧版**在剧根目录，自动兼容）：
+**主要落盘文件**（相对 `runs/<剧名>/`，新版路径）：
 
-- `01_series_outline.json` 或 `series_outline.json`
-- `02_character_bible.json` 或 `character_bible.json`
-- `03_series_memory.json` 或 `series_memory.json`
-- `03_anchor_beats.json`（`L2_spine/`）或 `anchor_beats.json`（若存在，则供 `episode_function_agent` 关联 `linked_anchor_ids`；旧目录无此文件时为空对象）
+- `L0_setup/`、`L1_season/`、`L2_spine/`、`L3_series/` 下各 JSON（含 `01_series_outline.json`、`01b_outline_review.json`、`02_character_bible.json`、`03_series_memory.json` 初始空、`04_episode_batch.json`、`05_series_manifest.json`）
 
-然后对每个 `episode_id` 依次执行：
+---
 
-1. `episode_function_agent`：生成本集功能卡（含 **`viewer_payoff_design`**：本集必须给观众的爽点/兑现设计，与 `must_advance` 等同级）
-2. `episode_plot_agent`：在功能卡约束下生成本集节拍 plot，并对齐 `series_memory.open_threads`；同时输出 **`rule_execution_map`**（本集规则与 beat 的触发—反馈绑定，剧情逻辑层）
-3. **`episode_plot_judge_agent`（可选）**：审 plot 逻辑、爽点是否落地、规则是否可执行；不通过则带反馈重写 plot（轮次由 `--judge-retries` 控制）
-4. `episode_script_agent`：生成口语化 script（须落实 `viewer_payoff_design` 与 `rule_execution_map`）
-5. `episode_storyboard_agent`：生成 Seedance 分镜（输入含 **plot**，确保规则与爽点在可拍层落地）
-6. **`episode_package_judge_agent`（可选）**：在 **memory 之前**审整包（功能卡兑现、叙事是否空、Seedance prompt 是否可用）；结果写入 **`05_creative_scorecard.json`**（替代占位）；不通过则按 `rewrite_scope` 返工：`storyboard` / `script` / `plot`
-7. `episode_memory_agent`：更新并落盘 `series_memory`
-8. `character_visual_patch_agent`（按需）：对新登场且尚未在圣经中的角色补全肖像条目并写回 `character_bible.json`
+## 分集阶段说明（`episode-batch`）
 
-> **分集 judge 何时启用**：`--quality-mode quality` 时默认开启；`fast` 模式下默认关闭以省调用，可加 **`--episode-judge`** 强制开启。可用 **`--no-episode-judge`** 在 quality 下关闭。 **`--judge-retries`** 控制 plot 侧与 package 侧各自最多重试次数（默认 2）。
+提供 `--series-dir` 与 `--episodes`（如 `1-3` 或 `1,5,7`）。脚本自动读取大纲、圣经、记忆与锚点（**新版**在 `L3_series/`、`L2_spine/`；**旧版平铺**仍兼容）。
 
-> 说明：新角色在本集仍是「先 script/storyboard、后 package 评审与 memory、再补 bible」；**下一集**起 pipeline 会读到更新后的 `character_bible.json`。
->
-> `quality` 模式下，`episode_function/plot/script/storyboard/memory/char_visual_patch` 会启用阶段 JSON 校验，不通过会自动带反馈重试（最多 3 轮）。
+每集典型顺序：
 
-`episode_function` 建议字段结构（节选）：
+1. **功能卡**（含 `viewer_payoff_design`）  
+2. **plot**（含 `rule_execution_map`；非规则题材可由 `capabilities` 允许空数组）  
+3. **plot_judge**（可选）→ 不通过重写 plot  
+4. **script** → 5. **storyboard**  
+6. **package_judge**（可选）→ 结果写入 **`05_creative_scorecard.json`**；不通过按 `rewrite_scope` 返工  
+7. **memory** 更新 → 8. **新角色**按需写入 `character_bible`  
+
+`quality` 下对 function / plot / script / storyboard / memory 等做 **JSON 结构质检**，失败带反馈最多重试 **3** 轮。
+
+### 字段示例（节选）
+
+`episode_function` 中的观众爽点设计：
 
 ```json
 {
   "episode_id": 1,
-  "linked_anchor_ids": [1, 3],
-  "episode_goal_in_series": "string",
-  "must_advance": ["string"],
-  "must_inherit": ["string"],
   "viewer_payoff_design": [
     {
       "type": "rule_exploit",
@@ -327,13 +306,11 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
       "payoff_target": "act2_or_act3",
       "description": "主角须在本集内利用一次规则，而非只被动挨打"
     }
-  ],
-  "what_changes_persistently": ["string"],
-  "future_threads_strengthened": ["string"]
+  ]
 }
 ```
 
-`plot` 中建议增加 `rule_execution_map`（与 `acts` 同级），示例：
+`plot` 中 `rule_execution_map`（**规则怪谈等题材**由 capabilities 强制；都市/情感等可为 `[]`）：
 
 ```json
 "rule_execution_map": [
@@ -348,37 +325,25 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 ]
 ```
 
-每集最终写入到：
+**单集目录**：新版 `L4_episodes/<剧名>_第XXX集/01_…06_package.json`；旧版 `episodes/…`。
 
-- 新版：`L4_episodes/<剧名>_第XXX集/01_episode_function.json` … `06_package.json`
-- 旧版：`episodes/<剧名>_第XXX集/episode_function.json` … `package.json`
+---
 
-同时持续刷新：
+## 题材规则（genres）
 
-- `L3_series/03_series_memory.json`（或旧版根目录同名文件）
-- `L3_series/02_character_bible.json`（有新角色时追加条目；或旧版根目录）
-- `L3_series/04_episode_batch.json`（或旧版根目录）
-- `L3_series/05_series_manifest.json`（每次 batch 结束重写；或旧版根目录 `series_manifest.json`）
+调用前会根据上下文推断 `genre_key`，从 `genres/genre_reference.json` 注入 **`rules_block` + `capabilities`**（如 `requires_rule_execution_map`、`uses_explicit_rules` 等），保证**禁忌、节奏、铁律**与**是否强制规则绑定表**在全流水线一致。
 
-### 题材规则注入（genres）
+---
 
-在调用各 agent 之前，会基于上下文文本推断 `genre_key`，
-并从 `genres/genre_reference.json` 抽取对应的 `rules_block` 与 `capabilities`（如 `requires_rule_execution_map`、`uses_explicit_rules` 等）一并注入提示词，
-使禁忌、节奏、语言铁律与「是否强制 rule_execution_map」等题材开关在多步骤生成里一致生效。
+## 设计原则（为何这样拆）
 
-### 设计原则（架构动机）
+- **先季内结构、后分集细节**，避免一上来就写散集。  
+- **耦合器**对齐「世界侧变化 ↔ 人物侧变化」双向因果。  
+- **spine + anchors** 先锁承重，再展开分集，降低「集数多但空心」风险。  
 
-- 先拆开定义 `整季主线/人物成长/世界揭示`，避免一个 agent 早期过度细化。
-- 用 `coupling_reconciler_agent` 强制对齐双向因果：  
-世界观变化 -> 事件压力 -> 人物改变；  
-人物改变 -> 决策变化 -> 推动下一次世界揭示。
-- `series_spine + anchor_beats` 先锁承重结构，再让分集展开，减少“55 集看起来热闹但空心”的风险。
+---
 
-## 数据结构约定（简表）
-
-### `series_memory.json`
-
-结构：
+## 数据结构简表：`series_memory.json`
 
 ```json
 {
@@ -391,17 +356,35 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 }
 ```
 
-说明：
+- `characters` 仅收录**具名角色**；群众/观众不进表。  
+- `open_threads` 用于跨集回扣与悬念延续。  
 
-- `characters` 只包含“有名字的角色”，`群众/观众` 不入该表。
-- `episodes.open_threads` 用于跨集回扣与悬念延续。
+---
 
-## 仓库与交付约束
+## 许可证
 
-建议你始终遵守：
+本仓库默认使用 **MIT License**（见仓库根目录 [`LICENSE`](LICENSE)）：他人可自由使用、修改与再分发，但需保留版权声明与许可全文；**不提供任何明示或默示担保**。
 
-- 不提交 `ai_manga_factory/.env`
-- 不提交 `ai_manga_factory/runs/`（生产输出）
-- 不提交 `.venv/`
+若你希望 **禁止闭源商用** 或 **衍生作品必须同样开源**，可考虑 **GPL-3.0**（与 [webnovel-writer](https://github.com/lingfengQAQ/webnovel-writer) 类似）；若仅自用、暂不对外授权，可不设开源许可证（默认保留全部权利，但他人无法合法复用）。**版权声明行**建议改成你的真实姓名或组织名，例如：`Copyright (c) 2026 张三`，再与 LICENSE 中第一行保持一致。
 
-如果你要工业化部署（CI/CD 或多人协作），推荐补一个 `.gitignore` 来强制忽略上述目录/文件。
+---
+
+## 仓库与安全
+
+- **不要提交** `ai_manga_factory/.env`、密钥与令牌  
+- **不要提交** `ai_manga_factory/runs/`（生产输出）  
+- **不要提交** `.venv/`  
+
+仓库已提供 `.gitignore` 时请以之为准；协作与 CI 建议强制忽略上述路径。
+
+---
+
+## 与同类开源项目的差异（可选阅读）
+
+| 维度 | 典型网文长线工具（如 [webnovel-writer](https://github.com/lingfengQAQ/webnovel-writer)、[InkOS](https://github.com/Narcooo/inkos)） | 本项目 |
+|------|----------------------------------------------------------------------------------------------------------------------------------|--------|
+| 主产出 | 长篇**正文** + 真相文件 / RAG / 审计循环 | **短剧结构化 JSON**（大纲、剧本、分镜、圣经、记忆） |
+| 集成形态 | Claude Code 插件 / CLI 小说引擎 | **Python + Google ADK**，一条 `run_series` 命令跑通 |
+| 强项 | 百万字连载、章节审计、去 AI 味 | **分集功能卡、跨集 memory、题材 capabilities、视频向分镜字段** |
+
+若你同时需要「网文正文生产线」与「短剧 JSON 生产线」，两者可并行使用：本仓库专注**制片友好、可对接视频工作流**的中间层资产。

@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 
 from google.adk.agents import Agent
 
-from .agent import MODEL, LANGUAGE_RULES
+from .creative_constants import MODEL, LANGUAGE_RULES
 
 
 def _json_only_instruction(schema_hint: str, constraints: List[str]) -> str:

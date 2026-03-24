@@ -14,7 +14,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from .agent import _strict_json_only
+from .creative_constants import _strict_json_only
 from .genre_rules import (
     capabilities_to_prompt_block,
     get_genre_capabilities,
