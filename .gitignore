@@ -1,0 +1,10 @@
+.env
+*.env
+ai_manga_factory/.env
+
+.venv/
+**/__pycache__/
+*.pyc
+
+ai_manga_factory/runs/
+ai_manga_factory/.adk/
