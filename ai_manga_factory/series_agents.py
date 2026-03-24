@@ -247,9 +247,9 @@ character_visual_patch_agent = Agent(
 episode_function_agent = Agent(
     name="episode_function_agent",
     model=MODEL,
-    description="生成本集在整季中的功能卡：承接 anchor、必须推进/继承项、持久变化与线索强化。",
+    description="生成本集在整季中的功能卡：承接 anchor、必须推进/继承项、持久变化、观众爽点设计与线索强化。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "episode_id": int,\n  "linked_anchor_ids": [int],\n  "episode_goal_in_series": str,\n  "must_advance": [str],\n  "must_inherit": [str],\n  "what_changes_persistently": [str],\n  "what_is_learned": [str],\n  "what_is_mislearned": [str],\n  "what_is_gained": [str],\n  "what_is_lost": [str],\n  "future_threads_strengthened": [str]\n}\n',
+        schema_hint='{\n  "episode_id": int,\n  "linked_anchor_ids": [int],\n  "episode_goal_in_series": str,\n  "must_advance": [str],\n  "must_inherit": [str],\n  "what_changes_persistently": [str],\n  "what_is_learned": [str],\n  "what_is_mislearned": [str],\n  "what_is_gained": [str],\n  "what_is_lost": [str],\n  "future_threads_strengthened": [str],\n  "viewer_payoff_design": [\n    {\n      "type": str,\n      "setup_source": str,\n      "payoff_target": str,\n      "description": str\n    }\n  ]\n}\n',
         constraints=[
             "严格输出合法 JSON（一个且仅一个 JSON 对象）；不允许额外自然语言。",
             "episode_id 必须与输入一致。",
@@ -258,8 +258,10 @@ episode_function_agent = Agent(
             "must: must_advance 至少 2 条，必须明确推进角色成长、世界揭示或 anchor 条件回收中的至少两类。",
             "must: must_inherit 至少 1 条，必须从 series_memory 或上集遗留中承接可验证线索/状态。",
             "must: what_changes_persistently 至少 1 条，写清本集结束后会留下来的东西。",
+            "must: viewer_payoff_design 至少 2 条；每条须含 type（如 rule_exploit/shock/reversal/emotional_hit）、payoff_target（如 early_hook/act2_or_act3/closing）、description（中文，可执行）。",
+            "should: setup_source 可指向 must_inherit/must_advance 等，说明爽点承接来源；无则写空字符串。",
             "should: what_is_mislearned 可写主角或团队的错误认知，为后续反噬埋伏笔。",
-            "avoid: 不要写具体分镜台词，不要替代 plot 的节拍细节。",
+            "avoid: 不要写具体分镜台词，不要替代 plot 的节拍细节；viewer_payoff_design 只定义观众层目标，不写具体台词。",
         ],
     ),
 )
@@ -267,13 +269,14 @@ episode_function_agent = Agent(
 episode_plot_agent = Agent(
     name="episode_plot_agent",
     model=MODEL,
-    description="根据 episode_function + series_outline + series_memory 生成某一集 plot（节拍）。",
+    description="根据 episode_function + series_outline + series_memory 生成 plot（节拍）与本集规则可执行绑定表 rule_execution_map。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "episode_id": int,\n  "title": str,\n  "theme": str,\n  "acts": [\n    { "act": 1, "beats": [str] },\n    { "act": 2, "beats": [str] },\n    { "act": 3, "beats": [str] }\n  ],\n  "hook": str,\n  "cliffhanger": str,\n  "twist_setup_clues": [str],\n  "buried_clues": [str],\n  "logic_check": {\n    "why_this_episode_matters_in_series": str,\n    "what_from_previous_episodes_is_actually_used": [str],\n    "what_new_longterm_change_is_created": [str],\n    "what_would_break_if_this_episode_were_removed": str\n  }\n}\n',
+        schema_hint='{\n  "episode_id": int,\n  "title": str,\n  "theme": str,\n  "acts": [\n    { "act": 1, "beats": [str] },\n    { "act": 2, "beats": [str] },\n    { "act": 3, "beats": [str] }\n  ],\n  "hook": str,\n  "cliffhanger": str,\n  "twist_setup_clues": [str],\n  "buried_clues": [str],\n  "rule_execution_map": [\n    {\n      "rule_id": str,\n      "rule_text": str,\n      "rule_layer": str,\n      "trigger_beat": str,\n      "feedback": str,\n      "verified_in_episode": bool\n    }\n  ],\n  "logic_check": {\n    "why_this_episode_matters_in_series": str,\n    "what_from_previous_episodes_is_actually_used": [str],\n    "what_new_longterm_change_is_created": [str],\n    "what_would_break_if_this_episode_were_removed": str\n  }\n}\n',
         constraints=[
             "严格输出合法 JSON（一个且仅一个 JSON 对象）；不允许额外自然语言。",
             "episode_id 必须与输入一致。",
-            "must: 必须落实输入中的 episode_function：must_advance、must_inherit、linked_anchor_ids 所指向的承重点，不得另起一套与功能卡无关的主线。",
+            "must: 必须落实输入中的 episode_function：must_advance、must_inherit、linked_anchor_ids、viewer_payoff_design；节拍须让观众爽点设计在对应幕次兑现。",
+            "must: rule_execution_map 至少 1 条（规则类题材至少 2 条）；每条含 rule_id、rule_text、rule_layer（如 surface/trap/usable）、trigger_beat（如 act1_beat_3，须能在 acts.beats 中对上）、feedback（违反或触发后的可拍后果）、verified_in_episode=true。",
             "must: beats 必须承接 series_memory.episodes 最近几集的 open_threads：至少 1-2 个 beats 要推进/回扣未解决线索。",
             "must: 每一幕内部必须至少包含一个‘即时兑现’：反转、规则利用、代价换收益、关系位移、误判惩罚中的至少一种。",
             "must: 核心破局方式不得依赖未铺垫、低代价、单步即解的直觉动作。",
@@ -282,6 +285,7 @@ episode_plot_agent = Agent(
             "should: 解法优先基于规则灰区、判定漏洞、环境约束、错误理解被纠正后的窄缝，而不是单纯躲避、遮挡、逃跑。",
             "should: 场景危机最好与环境固有物理特性绑定（如能见度、重力、隔音、材质、空间结构）。",
             "should: 每一集结束后最好沉淀至少一种长期变化：资产、代价、误解、伏笔中的一种。",
+            "avoid: 避免 rule_execution_map 与 beats 脱节；避免规则只作背景板而无触发与反馈。",
             "avoid: 避免用‘刚好发现一个关键道具’来替代真正的困局设计。",
             "avoid: 避免角色刚获得新认知就立刻轻松压制局面。",
         ],
@@ -291,11 +295,13 @@ episode_plot_agent = Agent(
 episode_script_agent = Agent(
     name="episode_script_agent",
     model=MODEL,
-    description="根据 episode_function + plot + character_bible + series_memory 生成 script。",
+    description="根据 episode_function + plot（含 rule_execution_map）+ character_bible + series_memory 生成 script。",
     instruction=_json_only_instruction(
         schema_hint='{\n  "episode_id": int,\n  "characters": [{"name": str, "role": str, "voice": str}],\n  "scenes": [\n    { "scene_id": int, "location": str, "time": str,\n      "beats": [str],\n      "dialogue": [{"speaker": str, "line": str}],\n      "narration": str }\n  ]\n}\n',
         constraints=[
             "严格遵循 input 里已存在的角色名：在 characters 里出现的 name 必须与 character_bible 或 series_memory 角色一致。",
+            "must: 必须落实 episode_function.viewer_payoff_design：每条爽点须在对应幕次/节奏有可观察的场面与后果，不得只写旁白概括。",
+            "must: 必须落实 plot.rule_execution_map：每条规则须在具体场次中有触发或试探，反馈与 plot 一致，不得改写成无关新规则。",
             "must: 必须体现 episode_function 中的 must_advance、what_is_learned/what_is_mislearned、what_changes_persistently，不得写成与功能卡无关的平行故事。",
             "must: dialogue 必须是口语化中文短句；narration 必须是中文且有情绪/画面感。",
             "must: 不允许角色直接口头完整解释‘破局逻辑’或‘规则原理’；必须通过试错动作、代价、环境反馈和现场反噬侧面呈现。",
@@ -313,7 +319,7 @@ episode_script_agent = Agent(
 episode_storyboard_agent = Agent(
     name="episode_storyboard_agent",
     model=MODEL,
-    description="根据 episode_function + script 生成分镜（每段可直接用于 Seedance）。",
+    description="根据 episode_function（含 viewer_payoff_design）+ plot.rule_execution_map + script 生成分镜（每段可直接用于 Seedance）。",
     instruction=_json_only_instruction(
         schema_hint='{\n  "episode_id": int,\n  "style": {"art_style": str, "color_tone": str},\n  "segments": [\n    {\n      "segment_id": int,\n      "scene_id": int,\n      "duration_seconds_min": int,\n      "duration_seconds_max": int,\n      "location": str,\n      "time_of_day": str,\n      "characters_in_frame": [str],\n      "dialogue_lines": [{"speaker": str, "line": str}],\n      "narration": str | null,\n      "emotion_tone": str,\n      "performance_notes": str,\n      "camera_plan": str,\n      "environment_details": str,\n      "sound_design": str,\n      "visual_description": str,\n      "subtitle_display": str,\n      "seedance_video_prompt": str\n    }\n  ]\n}\n',
         constraints=[
@@ -327,13 +333,51 @@ episode_storyboard_agent = Agent(
             "【对白】必须逐条覆盖 dialogue_lines（按顺序拼接）；【字幕】必须与屏幕字幕一致（可与【对白】相同，但必须有具体句子）。",
             "需要锁脸的主角/重要配角：必须在【角色外观锁定】复用 character_bible.appearance_lock 信息。",
             "如果 script/narration 有群众/人群/观众反应：必须在 characters_in_frame 加入‘群众/观众’，并在【角色】或【环境细节】写清群众做什么。",
-            "must: 分镜须服务于 episode_function 中的本集目标与持久变化，不得只复述 script 而无推进感。",
+            "must: 分镜须服务于 episode_function 中的本集目标、viewer_payoff_design 与持久变化，不得只复述 script 而无推进感。",
+            "must: 须在画面层兑现 rule_execution_map 中的触发与反馈（可拍、可见），不得省略已写明的规则后果。",
             "must: seedance_video_prompt 不得引入 script 中未出现的关键剧情信息、关键规则机制或关键解法解释。",
             "should: 分镜应优先强化人物状态变化、环境压迫感和规则后果的可视化，而不是额外补设定。",
             "avoid: 避免在 prompt 中偷偷解释上游没有写清的逻辑。",
         ],
     ),
 )
+
+
+episode_plot_judge_agent = Agent(
+    name="episode_plot_judge_agent",
+    model=MODEL,
+    description="在 plot 生成后审逻辑、爽点兑现与规则是否可执行，不审分镜。",
+    instruction=_json_only_instruction(
+        schema_hint='{\n  "pass": bool,\n  "overall_score_1to10": int,\n  "plot_logic_ok": bool,\n  "viewer_payoff_delivered": bool,\n  "rules_not_decorative": bool,\n  "issues": [str],\n  "must_fix_for_plot": [str],\n  "summary": str\n}\n',
+        constraints=[
+            "只输出一个 JSON 对象。",
+            "必须对照输入的 episode_function（含 viewer_payoff_design）与 plot（含 acts、rule_execution_map、logic_check）。",
+            "pass 仅当 overall_score_1to10>=8 且 hard 逻辑问题已排除：plot_logic_ok、viewer_payoff_delivered、rules_not_decorative 均为 true，且 issues 中无致命矛盾。",
+            "若 rule_execution_map 为空或与 beats 明显对不上，rules_not_decorative=false。",
+            "若 viewer_payoff_design 中的爽点在节拍中未落地，viewer_payoff_delivered=false。",
+            "must_fix_for_plot 须为中文、可执行，供下一轮重写 plot 使用；至少 0 条（通过时），不通过时至少 2 条。",
+        ],
+    ),
+)
+
+
+episode_package_judge_agent = Agent(
+    name="episode_package_judge_agent",
+    model=MODEL,
+    description="在 storyboard 之后审整包：功能卡兑现、叙事落地、Seedance 可拍性与 prompt 质量。",
+    instruction=_json_only_instruction(
+        schema_hint='{\n  "pass": bool,\n  "overall_score_1to10": int,\n  "function_delivered": bool,\n  "narrative_not_hollow": bool,\n  "seedance_prompts_usable": bool,\n  "rules_and_clues_landed": bool,\n  "issues": [str],\n  "must_fix": [str],\n  "rewrite_scope": str,\n  "quality_judge": { "pass": bool, "reason": str, "overall_score_1to10": int }\n}\n',
+        constraints=[
+            "只输出一个 JSON 对象。",
+            "输入包含整集：episode_function、plot、script、storyboard；须检查是否空谈、分镜是否可拍、seedance_video_prompt 是否只是复述而无画面执行。",
+            "rewrite_scope 必须是以下之一：storyboard | script | plot ；storyboard=仅重分镜；script=剧本+分镜需重做；plot=从节拍起重做（下游全重跑）。",
+            "quality_judge.pass 必须与顶层 pass 一致；quality_judge.reason 用 1-3 句中文概括；overall_score_1to10 与顶层一致。",
+            "pass 仅当 overall_score_1to10>=8 且 function_delivered、narrative_not_hollow、seedance_prompts_usable、rules_and_clues_landed 均为 true。",
+            "must_fix 为中文可执行项；不通过时至少 2 条。",
+        ],
+    ),
+)
+
 
 episode_memory_agent = Agent(
     name="episode_memory_agent",

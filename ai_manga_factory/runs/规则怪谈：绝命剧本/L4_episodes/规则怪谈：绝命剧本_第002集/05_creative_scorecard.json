@@ -1,0 +1,6 @@
+{
+  "quality_judge": {
+    "pass": true,
+    "reason": "episode-batch (fast) 模式下生成，尚未经过自动 QC。"
+  }
+}

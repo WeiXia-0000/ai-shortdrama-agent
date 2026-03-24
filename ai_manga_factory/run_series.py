@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -167,12 +167,45 @@ def _validate_stage_output(stage: str, obj: Dict[str, Any]) -> List[str]:
             )
         return issues
     if stage == "episode_function":
-        return _validate_required_keys(
+        issues = _validate_required_keys(
             obj,
-            ["episode_id", "episode_goal_in_series", "must_advance", "must_inherit", "future_threads_strengthened"],
+            [
+                "episode_id",
+                "episode_goal_in_series",
+                "must_advance",
+                "must_inherit",
+                "future_threads_strengthened",
+                "viewer_payoff_design",
+            ],
         )
+        vpd = obj.get("viewer_payoff_design")
+        if not isinstance(vpd, list) or len(vpd) < 2:
+            issues.append("viewer_payoff_design 至少需要 2 条对象")
+        else:
+            for i, item in enumerate(vpd):
+                if not isinstance(item, dict):
+                    issues.append(f"viewer_payoff_design[{i}] 必须是对象")
+                    continue
+                for k in ("type", "payoff_target", "description"):
+                    if _is_blank(item.get(k)):
+                        issues.append(f"viewer_payoff_design[{i}] 缺少或为空: {k}")
+        return issues
     if stage == "plot":
-        return _validate_required_keys(obj, ["episode_id", "title", "acts", "hook", "cliffhanger", "logic_check"])
+        issues = _validate_required_keys(
+            obj, ["episode_id", "title", "acts", "hook", "cliffhanger", "logic_check", "rule_execution_map"]
+        )
+        rem = obj.get("rule_execution_map")
+        if not isinstance(rem, list) or len(rem) < 1:
+            issues.append("rule_execution_map 至少需要 1 条规则绑定")
+        else:
+            for i, row in enumerate(rem):
+                if not isinstance(row, dict):
+                    issues.append(f"rule_execution_map[{i}] 必须是对象")
+                    continue
+                for k in ("rule_id", "rule_text", "rule_layer", "trigger_beat", "feedback"):
+                    if _is_blank(row.get(k)):
+                        issues.append(f"rule_execution_map[{i}] 缺少或为空: {k}")
+        return issues
     if stage == "script":
         issues = _validate_required_keys(obj, ["episode_id", "characters", "scenes"])
         scenes = obj.get("scenes") or []
@@ -514,7 +547,7 @@ def _write_series_manifest(series_dir: Path, series_title: str, paths: Optional[
         "episode_pipeline": {
             "folder": ep_folder,
             "order": ep_order,
-            "one_line": "单集内：功能卡 → 节拍 → 剧本 → 分镜；最后一项为整集 package。",
+            "one_line": "单集：功能卡(viewer_payoff_design)→plot(rule_execution_map)→[plot_judge]→script→storyboard→[package_judge→creative_scorecard]→memory；括号内在 quality 或 --episode-judge 时启用。",
         },
     }
     _dump_json(paths["series_manifest"], manifest)
@@ -870,6 +903,123 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     print(f"[series-setup] 输出完成：{series_dir}")
 
 
+def _episode_judges_enabled(args: argparse.Namespace) -> bool:
+    if getattr(args, "no_episode_judge", False):
+        return False
+    return args.quality_mode == "quality" or getattr(args, "episode_judge", False)
+
+
+def _judge_retries(args: argparse.Namespace) -> int:
+    try:
+        return max(0, int(getattr(args, "judge_retries", 2)))
+    except (TypeError, ValueError):
+        return 2
+
+
+def _creative_scorecard_placeholder(reason: str) -> Dict[str, Any]:
+    return {
+        "quality_judge": {"pass": True, "reason": reason, "overall_score_1to10": 0},
+        "plot_judge": None,
+        "package_judge": None,
+    }
+
+
+def _merge_creative_scorecard(
+    plot_judge: Optional[Dict[str, Any]],
+    package_judge: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    qj = None
+    if isinstance(package_judge, dict):
+        qj = package_judge.get("quality_judge")
+    if not isinstance(qj, dict):
+        qj = {
+            "pass": bool((package_judge or {}).get("pass", False)),
+            "reason": str((package_judge or {}).get("summary", "") or "package 评审"),
+            "overall_score_1to10": int((package_judge or {}).get("overall_score_1to10") or 0),
+        }
+    return {
+        "plot_judge": plot_judge,
+        "package_judge": package_judge,
+        "quality_judge": {
+            "pass": bool(qj.get("pass")),
+            "reason": str(qj.get("reason", "")),
+            "overall_score_1to10": int(qj.get("overall_score_1to10") or 0),
+        },
+    }
+
+
+async def _run_plot_phase_with_optional_judge(
+    *,
+    ep_id: int,
+    plot_prompt_base: str,
+    function_out: Dict[str, Any],
+    infer_text: str,
+    quality_mode: str,
+    use_judges: bool,
+    judge_retries: int,
+    session_service: InMemorySessionService,
+    user_id: str,
+    debug_dir: Path,
+    extra_feedback: str = "",
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """生成 plot；若开启分集 judge，则在 plot 后跑 episode_plot_judge 并重写 plot。"""
+    plot_feedback = (extra_feedback or "").strip()
+    plot_judge_out: Optional[Dict[str, Any]] = None
+    max_plot_rounds = (judge_retries + 1) if use_judges else 1
+    plot_out: Dict[str, Any] = {}
+
+    for pi in range(max_plot_rounds):
+        plot_prompt = _maybe_inject_genre_rules(
+            infer_text,
+            plot_prompt_base + (f"\n\n{plot_feedback}" if plot_feedback else ""),
+        )
+        plot_out = await _run_agent_json_with_qc(
+            stage="plot",
+            agent=series_agents.episode_plot_agent,
+            prompt=plot_prompt,
+            quality_mode=quality_mode,
+            session_service=session_service,
+            user_id=user_id,
+            session_id=f"episode_{ep_id}_plot_p{pi}",
+            debug_dir=debug_dir,
+        )
+        if not use_judges:
+            return plot_out, None
+
+        pj_prompt_base = (
+            "你是分集 plot 层评审。请严格只输出 JSON schema 要求的一个对象。\n"
+            "对照 episode_function（含 viewer_payoff_design）与 plot（含 acts、rule_execution_map）。\n\n"
+            f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
+            f"plot=\n{json.dumps(plot_out, ensure_ascii=False)}\n"
+        )
+        pj_prompt = _maybe_inject_genre_rules(infer_text, pj_prompt_base)
+        plot_judge_out = await _run_agent_json(
+            series_agents.episode_plot_judge_agent,
+            pj_prompt,
+            session_service=session_service,
+            user_id=user_id,
+            session_id=f"episode_{ep_id}_plot_judge_p{pi}",
+            debug_dir=debug_dir,
+        )
+        if bool(plot_judge_out.get("pass")):
+            return plot_out, plot_judge_out
+
+        if pi < max_plot_rounds - 1:
+            fixes = plot_judge_out.get("must_fix_for_plot") or []
+            issues = plot_judge_out.get("issues") or []
+            plot_feedback = (
+                "【episode_plot_judge 未通过，请重写 plot JSON】\n"
+                + "\n".join([f"- {x}" for x in fixes if x])
+                + ("\n\nissues:\n" + "\n".join([f"- {x}" for x in issues if x]) if issues else "")
+            )
+        else:
+            print(
+                f"[episode-batch] 警告 ep={ep_id}: plot_judge 在 {max_plot_rounds} 轮后仍未 pass，保留末版 plot。"
+            )
+
+    return plot_out, plot_judge_out
+
+
 async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None:
     debug_dir = output_root / "_debug" / f"episode_batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     _ensure_dir(debug_dir)
@@ -957,82 +1107,201 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             function_out["episode_id"] = ep_id
         _dump_json(ep_files["episode_function"], function_out)
 
-        # 1) plot
+        use_judges = _episode_judges_enabled(args)
+        jr = _judge_retries(args)
+        max_pkg_rounds = (jr + 1) if use_judges else 1
+
         plot_prompt_base = (
-            "生成本集 plot（JSON 输出）。\n"
-            "输入包含：episode_function、series_outline、series_memory、episode_id。\n\n"
+            "生成本集 plot（JSON 输出，必须包含 rule_execution_map）。\n"
+            "须落实 episode_function.viewer_payoff_design 与 must_advance/must_inherit。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
             f"episode_id={ep_id}\n"
         )
-        plot_prompt = _maybe_inject_genre_rules(infer_text, plot_prompt_base)
-        plot_out = await _run_agent_json_with_qc(
-            stage="plot",
-            agent=series_agents.episode_plot_agent,
-            prompt=plot_prompt,
-            quality_mode=args.quality_mode,
-            session_service=session_service,
-            user_id=user_id,
-            session_id=f"episode_{ep_id}_plot",
-            debug_dir=debug_dir,
-        )
-        _dump_json(ep_files["plot"], plot_out)
 
-        # 2) script
         script_prompt_base = (
             "生成本集 script（JSON 输出）。\n"
+            "必须落实 viewer_payoff_design 与 plot.rule_execution_map。\n"
             "输入包含：episode_function、series_outline、character_bible、series_memory、plot。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"character_bible=\n{json.dumps(character_bible, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
-            f"plot=\n{json.dumps(plot_out, ensure_ascii=False)}\n\n"
+            f"plot=\n{json.dumps({}, ensure_ascii=False)}\n\n"
         )
-        script_prompt = _maybe_inject_genre_rules(infer_text, script_prompt_base)
-        script_out = await _run_agent_json_with_qc(
-            stage="script",
-            agent=series_agents.episode_script_agent,
-            prompt=script_prompt,
-            quality_mode=args.quality_mode,
-            session_service=session_service,
-            user_id=user_id,
-            session_id=f"episode_{ep_id}_script",
-            debug_dir=debug_dir,
-        )
-        _dump_json(ep_files["script"], script_out)
 
-        # 3) storyboard
         storyboard_prompt_base = (
             "生成本集 storyboard（JSON 输出，用于 Seedance）。\n"
-            "输入包含：episode_function、series_outline、character_bible、series_memory、script。\n\n"
+            "须落实 viewer_payoff_design、plot.rule_execution_map 与 script。\n"
+            "输入包含：episode_function、plot、series_outline、character_bible、series_memory、script。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
+            f"plot=\n{json.dumps({}, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"character_bible=\n{json.dumps(character_bible, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
-            f"script=\n{json.dumps(script_out, ensure_ascii=False)}\n\n"
+            f"script=\n{json.dumps({}, ensure_ascii=False)}\n\n"
         )
-        storyboard_prompt = _maybe_inject_genre_rules(infer_text, storyboard_prompt_base)
-        storyboard_out = await _run_agent_json_with_qc(
-            stage="storyboard",
-            agent=series_agents.episode_storyboard_agent,
-            prompt=storyboard_prompt,
-            quality_mode=args.quality_mode,
-            session_service=session_service,
-            user_id=user_id,
-            session_id=f"episode_{ep_id}_storyboard",
-            debug_dir=debug_dir,
-        )
-        _dump_json(ep_files["storyboard"], storyboard_out)
 
-        # 4) creative_scorecard（和你现有示例保持一致：目前给快评占位）
-        creative_scorecard = {
-            "quality_judge": {
-                "pass": True,
-                "reason": "episode-batch (fast) 模式下生成，尚未经过自动 QC。",
-            }
-        }
-        _dump_json(ep_files["creative_scorecard"], creative_scorecard)
+        def _script_prompt_with(plot_obj: Dict[str, Any], extra: str = "") -> str:
+            core = script_prompt_base.replace(
+                f"plot=\n{json.dumps({}, ensure_ascii=False)}",
+                f"plot=\n{json.dumps(plot_obj, ensure_ascii=False)}",
+                1,
+            )
+            return _maybe_inject_genre_rules(infer_text, core + (f"\n\n{extra}" if extra.strip() else ""))
+
+        def _storyboard_prompt_with(plot_obj: Dict[str, Any], script_obj: Dict[str, Any], extra: str = "") -> str:
+            p = storyboard_prompt_base.replace(
+                f"plot=\n{json.dumps({}, ensure_ascii=False)}",
+                f"plot=\n{json.dumps(plot_obj, ensure_ascii=False)}",
+                1,
+            )
+            p = p.replace(
+                f"script=\n{json.dumps({}, ensure_ascii=False)}",
+                f"script=\n{json.dumps(script_obj, ensure_ascii=False)}",
+                1,
+            )
+            return _maybe_inject_genre_rules(infer_text, p + (f"\n\n{extra}" if extra.strip() else ""))
+
+        pending_scope: Optional[str] = None
+        pkg_feedback = ""
+        plot_out: Dict[str, Any] = {}
+        plot_judge_out: Optional[Dict[str, Any]] = None
+        package_judge_out: Optional[Dict[str, Any]] = None
+        script_out: Dict[str, Any] = {}
+        storyboard_out: Dict[str, Any] = {}
+        creative_scorecard: Dict[str, Any] = _creative_scorecard_placeholder(
+            "episode-batch：未开启分集 judge 或跳过后写入占位。"
+        )
+
+        for gi in range(max_pkg_rounds):
+            if gi == 0 or pending_scope == "plot":
+                plot_extra = pkg_feedback if pending_scope == "plot" else ""
+                plot_out, plot_judge_out = await _run_plot_phase_with_optional_judge(
+                    ep_id=ep_id,
+                    plot_prompt_base=plot_prompt_base,
+                    function_out=function_out,
+                    infer_text=infer_text,
+                    quality_mode=args.quality_mode,
+                    use_judges=use_judges,
+                    judge_retries=jr,
+                    session_service=session_service,
+                    user_id=user_id,
+                    debug_dir=debug_dir,
+                    extra_feedback=plot_extra,
+                )
+                _dump_json(ep_files["plot"], plot_out)
+
+                script_x = pkg_feedback if pending_scope == "plot" else ""
+                script_out = await _run_agent_json_with_qc(
+                    stage="script",
+                    agent=series_agents.episode_script_agent,
+                    prompt=_script_prompt_with(plot_out, script_x),
+                    quality_mode=args.quality_mode,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"episode_{ep_id}_script_g{gi}",
+                    debug_dir=debug_dir,
+                )
+                _dump_json(ep_files["script"], script_out)
+
+                storyboard_out = await _run_agent_json_with_qc(
+                    stage="storyboard",
+                    agent=series_agents.episode_storyboard_agent,
+                    prompt=_storyboard_prompt_with(plot_out, script_out, ""),
+                    quality_mode=args.quality_mode,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"episode_{ep_id}_storyboard_g{gi}",
+                    debug_dir=debug_dir,
+                )
+                _dump_json(ep_files["storyboard"], storyboard_out)
+
+            elif pending_scope == "script":
+                script_out = await _run_agent_json_with_qc(
+                    stage="script",
+                    agent=series_agents.episode_script_agent,
+                    prompt=_script_prompt_with(plot_out, f"【package_judge 返修】\n{pkg_feedback}"),
+                    quality_mode=args.quality_mode,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"episode_{ep_id}_script_g{gi}",
+                    debug_dir=debug_dir,
+                )
+                _dump_json(ep_files["script"], script_out)
+                storyboard_out = await _run_agent_json_with_qc(
+                    stage="storyboard",
+                    agent=series_agents.episode_storyboard_agent,
+                    prompt=_storyboard_prompt_with(plot_out, script_out, ""),
+                    quality_mode=args.quality_mode,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"episode_{ep_id}_storyboard_g{gi}",
+                    debug_dir=debug_dir,
+                )
+                _dump_json(ep_files["storyboard"], storyboard_out)
+
+            elif pending_scope == "storyboard":
+                storyboard_out = await _run_agent_json_with_qc(
+                    stage="storyboard",
+                    agent=series_agents.episode_storyboard_agent,
+                    prompt=_storyboard_prompt_with(
+                        plot_out, script_out, f"【package_judge 返修】\n{pkg_feedback}"
+                    ),
+                    quality_mode=args.quality_mode,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"episode_{ep_id}_storyboard_g{gi}",
+                    debug_dir=debug_dir,
+                )
+                _dump_json(ep_files["storyboard"], storyboard_out)
+
+            if not use_judges:
+                creative_scorecard = _creative_scorecard_placeholder(
+                    "fast 模式且未加 --episode-judge：跳过分集 plot/package judge。"
+                )
+                break
+
+            pkg_prompt_base = (
+                "你是分集整包评审（memory 之前最后一道内容门）。请只输出 JSON。\n"
+                "对照 episode_function（含 viewer_payoff_design）、plot（含 rule_execution_map）、script、storyboard。\n\n"
+                f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
+                f"plot=\n{json.dumps(plot_out, ensure_ascii=False)}\n\n"
+                f"script=\n{json.dumps(script_out, ensure_ascii=False)}\n\n"
+                f"storyboard=\n{json.dumps(storyboard_out, ensure_ascii=False)}\n"
+            )
+            pkg_prompt = _maybe_inject_genre_rules(infer_text, pkg_prompt_base)
+            package_judge_out = await _run_agent_json(
+                series_agents.episode_package_judge_agent,
+                pkg_prompt,
+                session_service=session_service,
+                user_id=user_id,
+                session_id=f"episode_{ep_id}_package_judge_g{gi}",
+                debug_dir=debug_dir,
+            )
+            creative_scorecard = _merge_creative_scorecard(plot_judge_out, package_judge_out)
+            _dump_json(ep_files["creative_scorecard"], creative_scorecard)
+
+            if bool(package_judge_out.get("pass")):
+                break
+
+            if gi < max_pkg_rounds - 1:
+                pending_scope = str(package_judge_out.get("rewrite_scope") or "storyboard").strip().lower()
+                if pending_scope not in ("storyboard", "script", "plot"):
+                    pending_scope = "storyboard"
+                fixes = package_judge_out.get("must_fix") or []
+                iss = package_judge_out.get("issues") or []
+                pkg_feedback = "\n".join([f"- {x}" for x in fixes if x])
+                if iss:
+                    pkg_feedback += "\nissues:\n" + "\n".join([f"- {x}" for x in iss if x])
+            else:
+                print(
+                    f"[episode-batch] 警告 ep={ep_id}: package_judge 在 {max_pkg_rounds} 轮后仍未 pass，保留末版。"
+                )
+
+        if not use_judges:
+            _dump_json(ep_files["creative_scorecard"], creative_scorecard)
 
         # 5) update series_memory
         memory_prompt_base = (
@@ -1122,6 +1391,24 @@ async def main_async() -> None:
     parser.add_argument("--episodes", default="")
     parser.add_argument("--series-memory", default="")
     parser.add_argument("--overwrite", action="store_true")
+
+    # 分集双层 judge：默认在 quality-mode quality 时启用；fast 可加 --episode-judge
+    parser.add_argument(
+        "--no-episode-judge",
+        action="store_true",
+        help="关闭 episode_plot_judge / episode_package_judge（仍保留字段校验与 viewer_payoff / rule_map）。",
+    )
+    parser.add_argument(
+        "--episode-judge",
+        action="store_true",
+        help="在 fast 模式下仍运行分集 plot/package judge（耗 API）。",
+    )
+    parser.add_argument(
+        "--judge-retries",
+        type=int,
+        default=2,
+        help="plot_judge 与 package_judge 各自最多重试轮数（默认 2，即最多 3 次生成尝试）。",
+    )
 
     args = parser.parse_args()
     # 输出目录固定在仓库内的 runs/，不需要用户手动提供路径

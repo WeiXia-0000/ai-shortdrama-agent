@@ -210,27 +210,28 @@ flowchart LR
 
     subgraph E2["Module 2: Episode Pipeline"]
       direction TB
-      P1["episode_function_agent"]
-      P2["episode_plot_agent"]
+      P1["episode_function_agent<br/>+ viewer_payoff_design"]
+      P2["episode_plot_agent<br/>+ rule_execution_map"]
+      PJ["episode_plot_judge_agent"]
       P3["episode_script_agent"]
       P4["episode_storyboard_agent"]
+      PK["episode_package_judge_agent"]
+      SC["05_creative_scorecard.json"]
       P5["episode_memory_agent"]
       P6["character_visual_patch_agent"]
-      P1 --> P2 --> P3 --> P4 --> P5 --> P6
+      P1 --> P2 --> PJ --> P3 --> P4 --> PK --> SC --> P5 --> P6
     end
 
     subgraph E3["Module 3: Quality Gate"]
       direction TB
-      Q1["stage validation"]
-      Q2{"Pass?"}
+      Q1["stage JSON 校验<br/>quality 模式多轮返修"]
+      Q2["plot_judge / package_judge<br/>未过则按 scope 返工"]
       Q1 --> Q2
-      Q2 -- "No" --> P4
-      Q2 -- "Yes" --> P5
     end
 
     subgraph R_ALL["Output Module"]
       direction TB
-      R0[输出：单集产物包（功能卡/节拍/剧本/分镜/评分）]
+      R0[输出：单集产物包（含真实 creative_scorecard）]
       R1[输出：系列记忆更新]
       R2[输出：角色圣经增量更新（按需）]
       R3[输出：批次汇总与阅读索引更新]
@@ -238,7 +239,8 @@ flowchart LR
     end
 
     E_IN --> E1 --> E2
-    P4 --> Q1
+    P2 --> Q1
+    PK --> Q2
     P6 --> R_ALL
 ```
 
@@ -295,18 +297,22 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
 
 然后对每个 `episode_id` 依次执行：
 
-1. `episode_function_agent`：生成本集功能卡 `episode_function.json`（本集在整季负责什么、删了会坏什么、必须推进/继承什么）
-2. `episode_plot_agent`：在功能卡约束下生成本集节拍 plot，并对齐 `series_memory.open_threads`
-3. `episode_script_agent`：生成口语化 script（须落实 `episode_function` 中的推进与认知变化）
-4. `episode_storyboard_agent`：生成 Seedance 可用分镜/字幕/提示词（含固定栏目模板）
-5. `episode_memory_agent`：更新并落盘 `series_memory`（回扣 `episode_function` 中的持久变化与线索强化）
-6. `character_visual_patch_agent`（按需）：对比 `series_memory.characters` 与 `character_bible.main_characters` 的 `name`，对**新登场且尚未在圣经中**的角色生成与 `character_bible_agent` 同结构的条目（含 `appearance_lock`、`face_triptych_prompt_cn`≤800、`body_triptych_prompt_cn`≤800、`negative_prompt_cn` 等），合并写回 `character_bible.json`，便于后续集与 Seedance 一致用图。
+1. `episode_function_agent`：生成本集功能卡（含 **`viewer_payoff_design`**：本集必须给观众的爽点/兑现设计，与 `must_advance` 等同级）
+2. `episode_plot_agent`：在功能卡约束下生成本集节拍 plot，并对齐 `series_memory.open_threads`；同时输出 **`rule_execution_map`**（本集规则与 beat 的触发—反馈绑定，剧情逻辑层）
+3. **`episode_plot_judge_agent`（可选）**：审 plot 逻辑、爽点是否落地、规则是否可执行；不通过则带反馈重写 plot（轮次由 `--judge-retries` 控制）
+4. `episode_script_agent`：生成口语化 script（须落实 `viewer_payoff_design` 与 `rule_execution_map`）
+5. `episode_storyboard_agent`：生成 Seedance 分镜（输入含 **plot**，确保规则与爽点在可拍层落地）
+6. **`episode_package_judge_agent`（可选）**：在 **memory 之前**审整包（功能卡兑现、叙事是否空、Seedance prompt 是否可用）；结果写入 **`05_creative_scorecard.json`**（替代占位）；不通过则按 `rewrite_scope` 返工：`storyboard` / `script` / `plot`
+7. `episode_memory_agent`：更新并落盘 `series_memory`
+8. `character_visual_patch_agent`（按需）：对新登场且尚未在圣经中的角色补全肖像条目并写回 `character_bible.json`
 
-> 说明：新角色在本集仍是「先 script/storyboard、后 memory、再补 bible」；**下一集**起 pipeline 会读到更新后的 `character_bible.json`。
+> **分集 judge 何时启用**：`--quality-mode quality` 时默认开启；`fast` 模式下默认关闭以省调用，可加 **`--episode-judge`** 强制开启。可用 **`--no-episode-judge`** 在 quality 下关闭。 **`--judge-retries`** 控制 plot 侧与 package 侧各自最多重试次数（默认 2）。
+
+> 说明：新角色在本集仍是「先 script/storyboard、后 package 评审与 memory、再补 bible」；**下一集**起 pipeline 会读到更新后的 `character_bible.json`。
 >
-> `quality` 模式下，`episode_function/plot/script/storyboard/memory/char_visual_patch` 会启用阶段质检，不通过会自动带反馈重试（最多 3 轮）。
+> `quality` 模式下，`episode_function/plot/script/storyboard/memory/char_visual_patch` 会启用阶段 JSON 校验，不通过会自动带反馈重试（最多 3 轮）。
 
-`episode_function` 建议字段结构：
+`episode_function` 建议字段结构（节选）：
 
 ```json
 {
@@ -315,13 +321,32 @@ series-setup 输出固定落盘到（**相对路径**均在 `runs/<剧名>/` 下
   "episode_goal_in_series": "string",
   "must_advance": ["string"],
   "must_inherit": ["string"],
+  "viewer_payoff_design": [
+    {
+      "type": "rule_exploit",
+      "setup_source": "must_inherit",
+      "payoff_target": "act2_or_act3",
+      "description": "主角须在本集内利用一次规则，而非只被动挨打"
+    }
+  ],
   "what_changes_persistently": ["string"],
-  "what_is_learned": ["string"],
-  "what_is_mislearned": ["string"],
-  "what_is_gained": ["string"],
-  "what_is_lost": ["string"],
   "future_threads_strengthened": ["string"]
 }
+```
+
+`plot` 中建议增加 `rule_execution_map`（与 `acts` 同级），示例：
+
+```json
+"rule_execution_map": [
+  {
+    "rule_id": "R1",
+    "rule_text": "晚十点后，请勿直视窗外",
+    "rule_layer": "surface",
+    "trigger_beat": "act1_beat_5",
+    "feedback": "违反后无声痉挛，口鼻渗血",
+    "verified_in_episode": true
+  }
+]
 ```
 
 每集最终写入到：
