@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,6 +22,7 @@ from .genre_rules import (
     infer_genre_context_for_prompt,
 )
 from . import series_agents
+from .carry_registry import ensure_registry_file, sync_carry_registry_minimal
 
 
 APP_NAME = "ai_manga_factory"
@@ -350,6 +352,36 @@ def _unique_episode_dir(episodes_root: Path, series_title: str, ep_id: int) -> P
         n += 1
 
 
+def parse_episode_id_from_dirname(dirname: str) -> Optional[int]:
+    """从目录名解析集号（须含「第NNN集」）。"""
+    m = re.search(r"第(\d+)集", dirname)
+    if not m:
+        return None
+    return int(m.group(1))
+
+
+def find_episode_dir_for_id(episodes_root: Path, episode_id: int) -> Tuple[Optional[Path], Optional[str]]:
+    """
+    在 episodes_root 下查找已存在的、目录名可解析为 episode_id 的集目录。
+    不创建新目录；若同集号对应多个目录则返回冲突说明（避免静默落到 _2/_3 新目录）。
+    """
+    if not episodes_root.is_dir():
+        return None, f"分集根目录不存在或不是目录: {episodes_root}"
+    matches: List[Path] = []
+    for p in sorted(episodes_root.iterdir(), key=lambda x: x.name):
+        if not p.is_dir():
+            continue
+        eid = parse_episode_id_from_dirname(p.name)
+        if eid == episode_id:
+            matches.append(p)
+    if not matches:
+        return None, f"未找到第 {episode_id} 集目录（在 {episodes_root} 下）"
+    if len(matches) > 1:
+        names = [m.name for m in matches]
+        return None, f"第 {episode_id} 集存在多个目录（冲突），请合并或删除重复项: {names}"
+    return matches[0], None
+
+
 def _series_root_from_outline_path(outline_path: Path) -> Path:
     """若大纲在 L3_series/ 下，则剧根目录为其上一级。"""
     outline_path = outline_path.resolve()
@@ -375,6 +407,7 @@ def _paths_layered(series_dir: Path) -> Dict[str, Any]:
         "outline_review": sd / "L3_series" / "01b_outline_review.json",
         "character_bible": sd / "L3_series" / "02_character_bible.json",
         "series_memory": sd / "L3_series" / "03_series_memory.json",
+        "production_carry_registry": sd / "L3_series" / "03b_production_carry_registry.json",
         "episode_batch": sd / "L3_series" / "04_episode_batch.json",
         "series_manifest": sd / "L3_series" / "05_series_manifest.json",
         "episodes_root": sd / "L4_episodes",
@@ -398,6 +431,7 @@ def _paths_flat(series_dir: Path) -> Dict[str, Any]:
         "outline_review": sd / "outline_review.json",
         "character_bible": sd / "character_bible.json",
         "series_memory": sd / "series_memory.json",
+        "production_carry_registry": sd / "03b_production_carry_registry.json",
         "episode_batch": sd / "episode_batch.json",
         "series_manifest": sd / "series_manifest.json",
         "episodes_root": sd / "episodes",
@@ -430,6 +464,7 @@ def _episode_json_paths(ep_dir: Path, layout: str) -> Dict[str, Path]:
             "storyboard": ep_dir / "04_storyboard.json",
             "creative_scorecard": ep_dir / "05_creative_scorecard.json",
             "package": ep_dir / "06_package.json",
+            "gate_artifacts": ep_dir / "07_gate_artifacts.json",
         }
     return {
         "episode_function": ep_dir / "episode_function.json",
@@ -438,6 +473,7 @@ def _episode_json_paths(ep_dir: Path, layout: str) -> Dict[str, Path]:
         "storyboard": ep_dir / "storyboard.json",
         "creative_scorecard": ep_dir / "creative_scorecard.json",
         "package": ep_dir / "package.json",
+        "gate_artifacts": ep_dir / "gate_artifacts.json",
     }
 
 
@@ -490,6 +526,13 @@ def _write_series_manifest(series_dir: Path, series_title: str, paths: Optional[
             ("L3", "大纲评审", "L3_series/01b_outline_review.json", ["L3_series/01_series_outline.json"], "题材/市场/节奏/转折评分与改写建议"),
             ("L3", "角色圣经", "L3_series/02_character_bible.json", ["L3_series/01_series_outline.json", "L3_series/01b_outline_review.json"], "外观锁与 Seedance 肖像"),
             ("L3", "系列记忆", "L3_series/03_series_memory.json", ["L3_series/01_series_outline.json"], "跨集记忆；batch 更新"),
+            (
+                "L3",
+                "制作承托寄存",
+                "L3_series/03b_production_carry_registry.json",
+                ["L3_series/02_character_bible.json", "L3_series/03_series_memory.json"],
+                "continuity / 承诺 / 关系压力 / 视觉锁等切片（随 batch 增量同步）",
+            ),
             ("L3", "批次汇总", "L3_series/04_episode_batch.json", ["L3_series/03_series_memory.json"], "已生成分集 package 列表"),
             ("L3", "阅读导航", "L3_series/05_series_manifest.json", ["L3_series/04_episode_batch.json"], "本文件：顺序与依赖说明"),
         ]
@@ -522,6 +565,13 @@ def _write_series_manifest(series_dir: Path, series_title: str, paths: Optional[
             ("L3", "大纲评审", "outline_review.json", ["series_outline.json"], "题材/市场/节奏/转折评分与改写建议"),
             ("L3", "角色圣经", "character_bible.json", ["series_outline.json", "outline_review.json"], "外观锁与 Seedance 肖像"),
             ("L3", "系列记忆", "series_memory.json", ["series_outline.json"], "跨集记忆；batch 更新"),
+            (
+                "L3",
+                "制作承托寄存",
+                "03b_production_carry_registry.json",
+                ["character_bible.json", "series_memory.json"],
+                "continuity 相关切片（随 batch 增量同步）",
+            ),
             ("L3", "批次汇总", "episode_batch.json", ["series_memory.json"], "已生成分集 package 列表"),
             ("L3", "阅读导航", "series_manifest.json", ["episode_batch.json"], "本文件：顺序与依赖说明"),
         ]
@@ -646,7 +696,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
 
     infer_text = "\n".join([args.theme or "", args.audience_view or "", args.series_title or ""]).strip()
     infer_text = infer_text or (args.series_title or "series")
-    _, _, setup_genre_caps = infer_genre_context_for_prompt(infer_text)
+    setup_genre_key, _, setup_genre_caps = infer_genre_context_for_prompt(infer_text)
 
     # 1) 市场调研
     market_prompt_base = (
@@ -929,6 +979,13 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "series_memory": series_memory,
     }
     _dump_json(out_paths["episode_batch"], episode_batch)
+
+    ensure_registry_file(
+        out_paths["production_carry_registry"],
+        series_slug=series_dir_name,
+        display_title=series_title,
+        genre_key=setup_genre_key,
+    )
 
     _write_series_manifest(series_dir, series_title, paths=out_paths)
     print(f"[series-setup] 输出完成：{series_dir}")
@@ -1412,11 +1469,21 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
         "series_memory": series_memory,
     }
     _dump_json(paths["episode_batch"], episode_batch_out)
+    try:
+        sync_carry_registry_minimal(paths, series_title=series_title, layout=layout)
+    except Exception as exc:
+        print(f"[episode-batch] production_carry_registry 同步未完全成功: {exc}")
     _write_series_manifest(series_dir, series_title, paths=paths)
     print(f"[episode-batch] 已更新：{paths['episode_batch']}")
 
 
 async def main_async() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "op":
+        from .studio_operations import run_cli
+
+        run_cli(sys.argv[2:])
+        return
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", required=True, choices=["series-setup", "episode-batch"])
     parser.add_argument("--series-title", default="")

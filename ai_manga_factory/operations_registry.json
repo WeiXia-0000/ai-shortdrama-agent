@@ -1,0 +1,312 @@
+{
+  "schema_version": "1.0",
+  "operations": [
+    {
+      "operation_id": "query.episode_lane_status",
+      "scope": "episode",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true, "description": "剧根目录 runs/<剧名>" },
+        "episode_id": { "type": "int", "required": true, "description": "集号" }
+      },
+      "outputs": { "kind": "json", "description": "各阶段 artifact 是否存在" },
+      "reads_from": [
+        "L3_series/01_series_outline.json",
+        "L3_series/04_episode_batch.json",
+        "L4_episodes/<series_title>_第<NNN>集/01_episode_function.json",
+        "L4_episodes/<series_title>_第<NNN>集/02_plot.json",
+        "L4_episodes/<series_title>_第<NNN>集/03_script.json",
+        "L4_episodes/<series_title>_第<NNN>集/04_storyboard.json",
+        "L4_episodes/<series_title>_第<NNN>集/05_creative_scorecard.json",
+        "L4_episodes/<series_title>_第<NNN>集/06_package.json",
+        "L4_episodes/<series_title>_第<NNN>集/07_gate_artifacts.json"
+      ],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "平铺布局时文件名无 L3/L4 前缀，解析由 resolve_series_paths 处理。"
+    },
+    {
+      "operation_id": "query.promise_lane_snapshot",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "仅读取 promise_lane 切片；文件不存在则返回空壳结构。"
+    },
+    {
+      "operation_id": "query.carry_slice",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "slice": { "type": "string", "required": false, "description": "缺省则返回全文件" }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "slice 白名单：story_thrust|asset_ledger|promise_lane|relation_pressure_map|knowledge_fence|visual_lock_registry"
+    },
+    {
+      "operation_id": "query.visual_lock_status",
+      "scope": "cast",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "cast_id": { "type": "string", "required": false }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": ""
+    },
+    {
+      "operation_id": "query.gate_status",
+      "scope": "episode",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "episode_id": { "type": "int", "required": true }
+      },
+      "outputs": { "kind": "json", "description": "单集 gate artifact 摘要（最新 plot/package 各一条）" },
+      "reads_from": [
+        "L4_episodes/<series_title>_第<NNN>集/07_gate_artifacts.json",
+        "episodes/<series_title>_第<NNN>集/gate_artifacts.json"
+      ],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "含 trend_summary（latest verdict、failure_signature、rerun_hint、连续同因失败计数等）；分层/平铺路径同上。"
+    },
+    {
+      "operation_id": "query.gate_trend",
+      "scope": "episode",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "episode_id": { "type": "int", "required": true }
+      },
+      "outputs": { "kind": "json", "description": "gate 历史尾部 + 趋势摘要 + 近期失败条目" },
+      "reads_from": [
+        "L4_episodes/<series_title>_第<NNN>集/07_gate_artifacts.json",
+        "episodes/<series_title>_第<NNN>集/gate_artifacts.json"
+      ],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "与 query.gate_status 互补，侧重 entries_tail / recent_failed_entries。"
+    },
+    {
+      "operation_id": "query.promise_status",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "episode_id": { "type": "int", "required": false },
+        "promise_status": { "type": "string", "required": false },
+        "promise_id": { "type": "string", "required": false }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "CLI：--episode-id；--promise-status；--promise-id 详情；--promise-filter all|manual_only|supersede；--anchor-id 过滤 linked_anchor_ids；返回 supersede_digest。"
+    },
+    {
+      "operation_id": "query.knowledge_fence",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "episode_id": { "type": "int", "required": false },
+        "kf_query_mode": { "type": "string", "required": false },
+        "character_name": { "type": "string", "required": false }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "CLI：--kf-query-mode 含 recent_changes、new_on_episode；角色过滤用 --cast-id。"
+    },
+    {
+      "operation_id": "carry.apply_promise_overrides",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "patch_json": { "type": "path", "required": true }
+      },
+      "outputs": { "kind": "file" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": ["L3_series/03b_production_carry_registry.json"],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": true,
+      "idempotent": false,
+      "batch_safe": false,
+      "implemented": true,
+      "notes": "patch JSON：{ overrides:[{ promise_id 或 match_compound_key, status, resolved_episode?, stale_reason?, manual_status_lock? }], updated_by? }；provenance=manual。"
+    },
+    {
+      "operation_id": "gate.run_plot_gate",
+      "scope": "episode",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "episode_id": { "type": "int", "required": true }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": [
+        "L4_episodes/<series_title>_第<NNN>集/01_episode_function.json",
+        "L4_episodes/<series_title>_第<NNN>集/02_plot.json"
+      ],
+      "writes_to": [
+        "L4_episodes/<series_title>_第<NNN>集/07_gate_artifacts.json",
+        "episodes/<series_title>_第<NNN>集/gate_artifacts.json"
+      ],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": true,
+      "idempotent": false,
+      "batch_safe": false,
+      "implemented": true,
+      "notes": "复用 episode_plot_judge_agent；stdout 返回 gate_result；另追加写入单集 gate artifact（与 scorecard 分离）。"
+    },
+    {
+      "operation_id": "gate.run_package_gate",
+      "scope": "episode",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "episode_id": { "type": "int", "required": true }
+      },
+      "outputs": { "kind": "file" },
+      "reads_from": [
+        "L4_episodes/<series_title>_第<NNN>集/06_package.json",
+        "L3_series/01_series_outline.json",
+        "L3_series/02_character_bible.json",
+        "L3_series/03_series_memory.json"
+      ],
+      "writes_to": [
+        "L4_episodes/<series_title>_第<NNN>集/07_gate_artifacts.json",
+        "episodes/<series_title>_第<NNN>集/gate_artifacts.json"
+      ],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": true,
+      "idempotent": false,
+      "batch_safe": false,
+      "implemented": true,
+      "notes": "复用 episode_package_judge_agent；优先读 06_package.json，否则读 01–04 分文件；stdout 返回 gate_result；另写入 gate artifact。"
+    },
+    {
+      "operation_id": "cast.scan_visual_coverage",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true }
+      },
+      "outputs": { "kind": "file" },
+      "reads_from": [
+        "L3_series/02_character_bible.json",
+        "L3_series/03_series_memory.json",
+        "L3_series/03b_production_carry_registry.json"
+      ],
+      "writes_to": ["L3_series/03b_production_carry_registry.json"],
+      "state_touch_list": [
+        { "slice": "visual_lock_registry", "mode": "derive" }
+      ],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "仅更新 visual_lock_registry 衍生列。"
+    },
+    {
+      "operation_id": "cast.patch_visual_lock",
+      "scope": "cast",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "patch_json": { "type": "path", "required": true, "description": "含 visual_lock_characters / bible_main_characters" }
+      },
+      "outputs": { "kind": "file" },
+      "reads_from": [
+        "L3_series/03b_production_carry_registry.json",
+        "L3_series/02_character_bible.json"
+      ],
+      "writes_to": [
+        "L3_series/03b_production_carry_registry.json",
+        "L3_series/02_character_bible.json"
+      ],
+      "state_touch_list": [
+        { "slice": "visual_lock_registry", "mode": "write" }
+      ],
+      "ui_exposure": "console_action",
+      "requires_confirmation": true,
+      "idempotent": false,
+      "batch_safe": false,
+      "implemented": true,
+      "notes": "dry-run 不读 patch 文件内容亦可展示计划。"
+    },
+    {
+      "operation_id": "carry.refresh_slice",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true },
+        "slice": { "type": "enum", "required": true, "values": ["promise_lane", "relation_pressure_map", "knowledge_fence"] }
+      },
+      "outputs": { "kind": "file" },
+      "reads_from": [
+        "L3_series/03_series_memory.json",
+        "L3_series/01_series_outline.json",
+        "L3_series/02_character_bible.json",
+        "L4_episodes/<任意集目录>/01_episode_function.json",
+        "L4_episodes/<任意集目录>/02_plot.json",
+        "L4_episodes/<任意集目录>/03_script.json",
+        "L4_episodes/<任意集目录>/04_storyboard.json",
+        "L4_episodes/<任意集目录>/06_package.json"
+      ],
+      "writes_to": ["L3_series/03b_production_carry_registry.json"],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": true,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "运行时校验 slice；state_touch 由 ownership_guard.validate_carry_refresh_slice_name 负责。"
+    }
+  ]
+}

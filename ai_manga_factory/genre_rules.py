@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-GENRE_REFERENCE_PATH = PROJECT_ROOT / "genres" / "genre_reference.json"
+# 兼容包内 genres/ 与仓库根 genres/（后者便于 monorepo 或多包布局）
+GENRE_REFERENCE_CANDIDATES = [
+    PROJECT_ROOT / "genres" / "genre_reference.json",
+    PROJECT_ROOT.parent / "genres" / "genre_reference.json",
+]
+# 最后一次成功加载的路径（便于排查是否静默退回 stub）
+LAST_LOADED_GENRE_REFERENCE_PATH: Optional[Path] = None
 
 # 与 JSON 中 capabilities 字段对齐；未知 genre 或缺字段时兜底
 DEFAULT_CAPABILITIES: Dict[str, Any] = {
@@ -20,18 +26,33 @@ DEFAULT_CAPABILITIES: Dict[str, Any] = {
 }
 
 
+def genre_reference_resolve_order() -> list[str]:
+    """文档化：题材库文件尝试顺序（先命中先使用）。"""
+    return [str(p.resolve()) for p in GENRE_REFERENCE_CANDIDATES]
+
+
 def _load_genre_reference() -> Dict[str, Any]:
-    if not GENRE_REFERENCE_PATH.exists():
-        return {
-            "general": {
-                "display_name": "通用",
-                "id": "general",
-                "keywords": [],
-                "capabilities": dict(DEFAULT_CAPABILITIES),
-                "rules_block": "【题材规则包：通用】\n- 保持逻辑自洽，禁止道具天降。\n- 叙事尽量口语化、有画面、少报告腔。\n",
-            }
+    """
+    读取顺序：
+    1) <包目录>/genres/genre_reference.json（ai_manga_factory/genres/…）
+    2) <包上级>/genres/genre_reference.json（仓库根 genres/…）
+    皆不存在时退回内存 stub（等价于仅 general），此时 LAST_LOADED_GENRE_REFERENCE_PATH 为 None。
+    """
+    global LAST_LOADED_GENRE_REFERENCE_PATH
+    for path in GENRE_REFERENCE_CANDIDATES:
+        if path.is_file():
+            LAST_LOADED_GENRE_REFERENCE_PATH = path
+            return json.loads(path.read_text(encoding="utf-8"))
+    LAST_LOADED_GENRE_REFERENCE_PATH = None
+    return {
+        "general": {
+            "display_name": "通用",
+            "id": "general",
+            "keywords": [],
+            "capabilities": dict(DEFAULT_CAPABILITIES),
+            "rules_block": "【题材规则包：通用】\n- 保持逻辑自洽，禁止道具天降。\n- 叙事尽量口语化、有画面、少报告腔。\n",
         }
-    return json.loads(GENRE_REFERENCE_PATH.read_text(encoding="utf-8"))
+    }
 
 
 def infer_genre_from_text(text: str) -> str:

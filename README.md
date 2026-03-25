@@ -361,6 +361,67 @@ flowchart LR
 
 ---
 
+## 生产状态层（MVP+）
+
+除 `series_memory` 外，仓库已接通 **production carry 状态层**（`03b_production_carry_registry.json`）与可控 op：
+
+- `promise_lane`：承诺跟踪（`open/paid_off/broken/stale`），支持跨集同一性、人工 override、轻量 supersede 标记。  
+- `relation_pressure_map`：关系压力态势（弱/强证据分流，保守写入）。  
+- `knowledge_fence`：最小信息边界轨迹（`fact_id/fact_text/visibility/confidence/known_by`），仅在高置信度场景填 `known_by`。  
+- `visual_lock_registry`：角色视觉锁覆盖与补丁。
+
+---
+
+## Gate Artifact 与趋势摘要
+
+分集 gate 结果会落到单集目录：
+
+- 分层：`L4_episodes/<剧名>_第NNN集/07_gate_artifacts.json`
+- 平铺：`episodes/<剧名>_第NNN集/gate_artifacts.json`
+
+每次 gate 追加 `entries`，并维护 `trend_summary`，可直接给控制台/后续 dashboard 消费。核心字段包括：
+
+- latest verdict：`latest_plot_gate`、`latest_package_gate`、`latest_overall_pass_state`
+- 失败追踪：`failure_signature`、`consecutive_same_failure_count`、`failure_trend_label`
+- 编排提示：`rerun_hint`、`latest_verdict.last_suggested_rerun_hint`
+- 轻恢复提示：`recovery_light_hint`
+
+---
+
+## Studio Operations（查询与纠偏）
+
+入口：`python -m ai_manga_factory.studio_operations`
+
+常用能力：
+
+- `query.promise_status`：按状态/创建集/anchor/manual/supersede 查询承诺，支持 `--promise-id` 单条详情。  
+- `query.knowledge_fence`：按 `audience_only`、`low_confidence`、`known_by_character`、`recent_changes` 等模式过滤。  
+- `query.gate_status` / `query.gate_trend`：读取单集 gate 最新结论与趋势尾部。  
+- `carry.refresh_slice`：刷新 `promise_lane|relation_pressure_map|knowledge_fence`。  
+- `carry.apply_promise_overrides`：人工状态纠偏，保留 `override_reason/override_source/previous_status`。
+
+示例：
+
+```powershell
+python -m ai_manga_factory.studio_operations run query.promise_status `
+  --series-dir "d:\AI_Agent\ai-shortdrama-agent-adk\ai_manga_factory\runs\<剧名>" `
+  --promise-filter manual_only
+```
+
+```powershell
+python -m ai_manga_factory.studio_operations run query.gate_trend `
+  --series-dir "d:\AI_Agent\ai-shortdrama-agent-adk\ai_manga_factory\runs\<剧名>" `
+  --episode-id 1
+```
+
+```powershell
+python -m ai_manga_factory.studio_operations run query.knowledge_fence `
+  --series-dir "d:\AI_Agent\ai-shortdrama-agent-adk\ai_manga_factory\runs\<剧名>" `
+  --kf-query-mode recent_changes
+```
+
+---
+
 ## 许可证
 
 本仓库默认使用 **MIT License**（见仓库根目录 [`LICENSE`](LICENSE)）：他人可自由使用、修改与再分发，但需保留版权声明与许可全文；**不提供任何明示或默示担保**。可将 `LICENSE` 中的版权行改为你的真实姓名或组织名，并与实际权利归属一致。
