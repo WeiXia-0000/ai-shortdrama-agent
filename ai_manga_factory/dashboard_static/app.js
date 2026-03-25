@@ -113,27 +113,205 @@ function renderEpisodes(data) {
       const id = parseInt(tr.dataset.epid, 10);
       selectedEp = id;
       const row = (data.episodes || []).find((x) => x.episode_id === id);
-      const box = document.getElementById("ep-detail");
-      if (!row) return;
-      const ts = row.trend_summary || {};
-      const lv = ts.latest_verdict || {};
-      box.classList.remove("hidden");
-      box.textContent = JSON.stringify(
-        {
-          episode_id: row.episode_id,
-          episode_dir: row.episode_dir,
-          gate_artifact_exists: row.gate_artifact_exists,
-          latest_verdict: lv,
-          failure_trend_label: ts.failure_trend_label,
-          repeated_same_failure: ts.repeated_same_failure_as_immediate_previous,
-          recovery_light_hint: ts.recovery_light_hint,
-          rerun_hint_summary: ts.rerun_hint_summary,
-        },
-        null,
-        2
-      );
+      const drawer = document.getElementById("ep-drawer");
+      const body = document.getElementById("drawer-body");
+      const title = document.getElementById("drawer-title");
+      if (!row || !drawer || !body || !title) return;
+
+      const details = (data.episode_details || {})[String(id)] || {};
+      title.textContent = `Episode #${id}`;
+      body.innerHTML = renderEpisodeDrawer(details, row);
+      drawer.classList.remove("hidden");
+      drawer.setAttribute("aria-hidden", "false");
     });
   });
+}
+
+function mkTag(cls, text) {
+  if (text === null || text === undefined || text === "") return `<span class="tag na">—</span>`;
+  return `<span class="tag ${cls}">${escapeHtml(String(text))}</span>`;
+}
+
+function renderEpisodeDrawer(details, row) {
+  const header = details.header || {};
+  const ps = details.promise_snapshot || {};
+  const kf = details.knowledge_snapshot || {};
+  const vs = details.visual_snapshot || {};
+  const gs = details.gate_snapshot || {};
+  const files = details.artifacts_presence || {};
+
+  const riskTags = header.risk_tags || [];
+  const riskPills = riskTags.length ? riskTags.map((t) => `<span class="pill">${escapeHtml(t)}</span>`).join("") : `<span class="empty">无明显风险标签</span>`;
+
+  const promEmpty =
+    (!ps.touched_promises || ps.touched_promises.length === 0) && (!ps.new_promises || ps.new_promises.length === 0);
+
+  const factsEmpty = (!kf.facts || kf.facts.length === 0);
+  const castEmpty = (!vs.cast_rows || vs.cast_rows.length === 0);
+
+  const openSmart = (n) => `${n ?? 0}`;
+
+  const promiseRows = (ps.touched_promises || []).slice(0, 10);
+  const promiseHtml = promEmpty
+    ? `<div class="empty">无关联 promises（或 registry 为空壳）</div>`
+    : `<table class="mini-table"><thead><tr><th>promise</th><th>状态</th><th>创建/触达</th></tr></thead><tbody>${promiseRows
+        .map((p) => {
+          return `<tr>
+            <td>
+              <div><strong>${escapeHtml(p.promise_id || "")}</strong></div>
+              <div class="empty">${escapeHtml(p.description || "")}</div>
+            </td>
+            <td>${escapeHtml(p.status || "open")}${p.manual_override ? " · 人工" : ""}</td>
+            <td>${p.created_episode ?? "—"} / ${p.last_seen_episode ?? "—"}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table>`;
+
+  const highlightPromises = (ps.highlight_promises || []).slice(0, 5);
+  const highlightHtml =
+    highlightPromises.length === 0
+      ? `<div class="empty">暂无最值得注意的 promises</div>`
+      : `<div class="pill-list">${highlightPromises
+          .map(
+            (p) =>
+              `<span class="pill">${escapeHtml(p.promise_id || "")}: ${escapeHtml(p.status || "")}</span>`
+          )
+          .join("")}</div>`;
+
+  const factsRows = (kf.facts || []).slice(0, 10);
+  const factsHtml = factsEmpty
+    ? `<div class="empty">无关联 knowledge_fence facts</div>`
+    : `<table class="mini-table"><thead><tr><th>fact</th><th>置信/可见</th><th>集范围</th></tr></thead><tbody>${factsRows
+        .map((f) => {
+          return `<tr>
+            <td>
+              <div><strong>${escapeHtml(f.fact_id || "")}</strong></div>
+              <div class="empty">${escapeHtml(f.fact_text || "")}</div>
+            </td>
+            <td>${escapeHtml(f.visibility || "")} / ${escapeHtml(f.confidence || "")}${f.known_by && f.known_by.length ? ` · known_by:${escapeHtml(f.known_by.join("、"))}` : ""}</td>
+            <td>${f.first_seen_episode ?? "—"}→${f.last_confirmed_episode ?? "—"}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table>`;
+
+  const castRows = (vs.cast_rows || []).slice(0, 12);
+  const castHtml = castEmpty
+    ? `<div class="empty">无关联 visual_lock 数据</div>`
+    : `<table class="mini-table"><thead><tr><th>角色</th><th>视觉状态</th><th>缺项摘要</th></tr></thead><tbody>${castRows
+        .map((c) => {
+          const missing = c.missing_items && c.missing_items.length ? c.missing_items.join("，") : "";
+          return `<tr>
+            <td><strong>${escapeHtml(c.display_name || c.cast_id || "")}</strong></td>
+            <td>${escapeHtml(c.visual_state || "")}</td>
+            <td>${escapeHtml(missing || "—")}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table>`;
+
+  const latestPlot = gs.latest_plot_gate;
+  const latestPkg = gs.latest_package_gate;
+  const plotSummary = latestPlot ? `${latestPlot.pass === true ? "PASS" : latestPlot.pass === false ? "FAIL" : "—"} · ${latestPlot.summary || ""}` : "未找到 plot gate（可能尚未跑 judge）";
+  const pkgSummary = latestPkg ? `${latestPkg.pass === true ? "PASS" : latestPkg.pass === false ? "FAIL" : "—"} · ${latestPkg.summary || ""}` : "未找到 package gate（可能尚未跑 judge）";
+
+  const debugRaw = details.raw_debug ? JSON.stringify(details.raw_debug, null, 2) : "";
+
+  const filesHtml = (() => {
+    const f = files.files || {};
+    const item = (k, label) => {
+      const row = f[k] || {};
+      const ex = row.exists;
+      if (ex === undefined) return `<div>${escapeHtml(label)}：—</div>`;
+      return `<div>${escapeHtml(label)}：${ex ? "存在" : "缺失"}</div>`;
+    };
+    return `<div class="kv">
+      ${item("episode_function", "episode_function")}
+      ${item("plot", "plot")}
+      ${item("script", "script")}
+      ${item("storyboard", "storyboard")}
+      ${item("creative_scorecard", "creative_scorecard")}
+      ${item("package", "package")}
+      ${item("gate_artifacts", "gate_artifacts")}
+    </div>
+    <div class="empty" style="margin-top:0.5rem">最新 artifact 更新时间：${escapeHtml(files.latest_artifact_update_at || "—")}</div>`;
+  })();
+
+  return `
+    <div class="dsec">
+      <h3>Episode Header / Summary</h3>
+      <div class="kv">
+        <div class="k">Episode</div><div>${escapeHtml(details.episode_id ?? row.episode_id)}</div>
+        <div class="k">Title</div><div>${escapeHtml(details.title || row.title || "")}</div>
+        <div class="k">整体 Gate</div><div>${escapeHtml(details.header?.episode_overall_gate ?? row.episode_overall_gate ?? "")}</div>
+      </div>
+      <div class="pill-list" style="margin-top:0.5rem">
+        <span class="pill">plot: ${escapeHtml(row.plot_gate_pass === true ? "PASS" : row.plot_gate_pass === false ? "FAIL" : "—")}</span>
+        <span class="pill">pkg: ${escapeHtml(row.package_gate_pass === true ? "PASS" : row.package_gate_pass === false ? "FAIL" : "—")}</span>
+        <span class="pill">趋势: ${escapeHtml(row.failure_trend_label || "—")}</span>
+      </div>
+      <div style="margin-top:0.65rem">
+        <div class="k">风险标签</div>
+        ${riskPills}
+      </div>
+      <div style="margin-top:0.65rem" class="empty">rerun hint：${escapeHtml(header.rerun_hint_summary || "—")}</div>
+      <div class="empty">recovery：${escapeHtml(gs.recovery_light_hint || "—")}</div>
+    </div>
+
+    <div class="dsec">
+      <h3>Promise Snapshot</h3>
+      <div class="mini-stats">
+        <span>open <strong>${escapeHtml(openSmart(ps.open_promise_count))}</strong></span>
+        <span>stale <strong>${escapeHtml(openSmart(ps.stale_promise_count))}</strong></span>
+        <span>broken <strong>${escapeHtml(openSmart(ps.broken_promise_count))}</strong></span>
+        <span>人工 <strong>${escapeHtml(openSmart(ps.manual_override_count))}</strong></span>
+        <span>supersede <strong>${escapeHtml(openSmart(ps.supersede_count))}</strong></span>
+      </div>
+      <div class="empty">最值得注意的 2-5 条：${highlightHtml}</div>
+      ${promiseHtml}
+    </div>
+
+    <div class="dsec">
+      <h3>Knowledge Snapshot</h3>
+      <div class="mini-stats">
+        <span>facts(触达) <strong>${escapeHtml(kf.total_facts_touching_episode ?? kf.total_facts ?? 0)}</strong></span>
+        <span>低置信 <strong>${escapeHtml(kf.low_confidence_count ?? 0)}</strong></span>
+        <span>audience_only <strong>${escapeHtml(kf.audience_only_count ?? 0)}</strong></span>
+        <span>recent changes <strong>${escapeHtml(kf.recent_changes_count ?? 0)}</strong></span>
+      </div>
+      ${factsHtml}
+    </div>
+
+    <div class="dsec">
+      <h3>Visual Snapshot</h3>
+      <div class="mini-stats">
+        <span>related roles <strong>${escapeHtml(vs.related_cast_count ?? vs.related_cast_count ?? 0)}</strong></span>
+        <span>complete <strong>${escapeHtml(vs.complete_count ?? 0)}</strong></span>
+        <span>partial <strong>${escapeHtml(vs.partial_count ?? 0)}</strong></span>
+        <span>missing <strong>${escapeHtml(vs.missing_count ?? 0)}</strong></span>
+      </div>
+      ${castHtml}
+    </div>
+
+    <div class="dsec">
+      <h3>Gate Snapshot</h3>
+      <div class="empty">plot：${escapeHtml(plotSummary)}</div>
+      <div class="empty" style="margin-top:0.35rem">package：${escapeHtml(pkgSummary)}</div>
+      <div class="empty" style="margin-top:0.35rem">last failure primary cause：${escapeHtml(gs.last_failure_primary_cause || "—")}</div>
+      <div class="empty">repeated failure：${escapeHtml(gs.repeated_failure_active ? "是" : "否")}</div>
+      <div class="empty">rerun hint summary：${escapeHtml(gs.rerun_hint_summary || "—")}</div>
+    </div>
+
+    <div class="dsec">
+      <h3>Files / Artifacts Presence</h3>
+      ${filesHtml}
+    </div>
+
+    <div class="dsec">
+      <h3>Raw JSON（可调试，默认折叠不可展示展开按钮，避免影响阅读）</h3>
+      <div class="empty" style="white-space:pre-wrap;max-height:220px;overflow:auto;border:1px dashed #2a3038;padding:0.5rem;margin-top:0.5rem">
+        ${escapeHtml(debugRaw || "{}")}
+      </div>
+    </div>
+  `;
 }
 
 function escapeHtml(s) {
@@ -296,5 +474,14 @@ document.getElementById("flt-promise-status").addEventListener("change", () => l
 document.getElementById("flt-manual").addEventListener("change", () => lastData && renderPromises(lastData));
 document.getElementById("flt-supersede").addEventListener("change", () => lastData && renderPromises(lastData));
 document.getElementById("flt-kf").addEventListener("change", () => lastData && renderKf(lastData));
+
+const epDrawer = document.getElementById("ep-drawer");
+const btnDrawerClose = document.getElementById("btn-drawer-close");
+if (epDrawer && btnDrawerClose) {
+  btnDrawerClose.addEventListener("click", () => {
+    epDrawer.classList.add("hidden");
+    epDrawer.setAttribute("aria-hidden", "true");
+  });
+}
 
 refresh();

@@ -179,3 +179,77 @@ tbody tr:hover { background: #1f242c; }
   font-size: 0.82rem;
 }
 .foot { padding: 0.75rem 1.25rem 1.5rem; font-size: 0.75rem; color: var(--muted); }
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(680px, 92vw);
+  height: 100vh;
+  background: #12161c;
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.35);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+}
+.drawer-head {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.drawer-body {
+  overflow-y: auto;
+  padding: 0.9rem;
+}
+.dsec {
+  background: #171c24;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  margin-bottom: 0.7rem;
+}
+.dsec h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.84rem;
+  color: #c7ced8;
+}
+.kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.4rem 0.75rem;
+  font-size: 0.79rem;
+}
+.kv .k {
+  color: var(--muted);
+}
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+.pill {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  background: #27313c;
+  color: #c2d5e8;
+}
+.empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.77rem;
+}
+.mini-table th, .mini-table td {
+  border-bottom: 1px solid #2a313b;
+  padding: 0.34rem 0.4rem;
+  vertical-align: top;
+}
