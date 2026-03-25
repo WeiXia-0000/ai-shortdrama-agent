@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>制作调度台 · 只读</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark">▣</span>
+      <div>
+        <h1 id="hdr-title">短剧 / 漫剧 · 生产控制台</h1>
+        <p class="sub" id="hdr-sub">只读观测 · 无生成 · 无写盘</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" id="btn-reload" class="btn">重新拉取数据</button>
+    </div>
+  </header>
+
+  <div id="banner-warn" class="banner hidden"></div>
+
+  <section class="grid-overview" id="overview"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>分集节拍 · Episode Lane</h2>
+      <div class="filters">
+        <label>筛选</label>
+        <select id="flt-ep">
+          <option value="all">全部</option>
+          <option value="gate_fail">Gate 未通过</option>
+          <option value="repeated">连续同类失败</option>
+          <option value="stale">含 stale 承诺</option>
+          <option value="broken">含 broken 承诺</option>
+          <option value="low_kf">低置信知识</option>
+          <option value="vl_series">系列视觉锁未齐</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="lane">
+        <thead>
+          <tr>
+            <th>集</th>
+            <th>标题</th>
+            <th>Plot</th>
+            <th>Pkg</th>
+            <th>趋势</th>
+            <th>Open</th>
+            <th>Stale/Broken</th>
+            <th>低置信知识</th>
+            <th>关系触点</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-ep"></tbody>
+      </table>
+    </div>
+    <div id="ep-detail" class="detail hidden"></div>
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <h2>承诺 · Promise Lane</h2>
+      <div class="mini-stats" id="promise-summary"></div>
+      <div class="filters inline">
+        <select id="flt-promise-status">
+          <option value="all">全部状态</option>
+          <option value="open">open</option>
+          <option value="stale">stale</option>
+          <option value="broken">broken</option>
+          <option value="paid_off">paid_off</option>
+        </select>
+        <label><input type="checkbox" id="flt-manual" /> 仅人工覆盖</label>
+        <label><input type="checkbox" id="flt-supersede" /> 含 supersede 链</label>
+      </div>
+      <div class="table-wrap short">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>状态</th>
+              <th>摘要</th>
+              <th>创建集</th>
+              <th>最后见</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-promise"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>知识围栏 · Knowledge Fence</h2>
+      <div class="mini-stats" id="kf-summary"></div>
+      <div class="filters inline">
+        <select id="flt-kf">
+          <option value="all">全部</option>
+          <option value="low">低置信</option>
+          <option value="audience">audience_only</option>
+          <option value="recent">recent_changes</option>
+        </select>
+      </div>
+      <div class="table-wrap short">
+        <table>
+          <thead>
+            <tr>
+              <th>fact</th>
+              <th>conf</th>
+              <th>vis</th>
+              <th>集</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-kf"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>视觉锁 · Visual Lock</h2>
+    <div id="vl-panel"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Gate Trend · 各集摘要</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>集</th>
+            <th>verdict</th>
+            <th>重复失败</th>
+            <th>恢复提示</th>
+            <th>rerun</th>
+            <th>主因</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-gate"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span id="foot-meta"></span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

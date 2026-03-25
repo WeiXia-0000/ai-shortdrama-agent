@@ -422,6 +422,35 @@ python -m ai_manga_factory.studio_operations run query.knowledge_fence `
 
 ---
 
+## 只读 Dashboard MVP（制作调度台）
+
+本地 **只读** Web 面板：聚合 `production_carry_registry`、各集 `gate_artifacts`、分集目录扫描与 `genre` capabilities，用于观测节拍与风险；**不提供**重新生成、refresh 切片、apply override、visual patch 等写操作。
+
+### 启动
+
+```powershell
+cd "d:\AI_Agent\ai-shortdrama-agent-adk"
+python -m ai_manga_factory.dashboard_server --series-dir "d:\path\to\你的剧根目录" --port 8765
+```
+
+浏览器打开：`http://127.0.0.1:8765/`  
+「重新拉取数据」仅再次 `GET /api/dashboard`（仍只读，不触发模型）。
+
+### 数据源（与 UI 对应）
+
+| 模块 | 主要来源 |
+|------|----------|
+| 系列总览 | `resolve_series_paths`、`01_series_outline.json` / `series_outline.json`、`production_carry_registry`、`genre_rules.get_genre_capabilities` |
+| Episode Lane | `_iter_episode_dirs`、`gate_artifacts.load_gate_artifact` + `build_gate_trend_summary`、registry 内按集聚合 |
+| Promises | `promise_lane.promises`（摘要口径与 `query.promise_status` 一致；`_promise_row_manual_override`） |
+| Knowledge Fence | `knowledge_fence.facts`（维度与 `query.knowledge_fence` 对齐，由前端筛选） |
+| Visual Lock | `visual_lock_registry.characters` |
+| Gate Trend | 与各集 gate artifact 内 `trend_summary` 一致（同 `query.gate_trend` 数据源） |
+
+实现入口：`ai_manga_factory/dashboard_readonly.py`（数据）、`ai_manga_factory/dashboard_server.py`（HTTP）、`ai_manga_factory/dashboard_static/`（静态页）。**无新增 Python 依赖**（标准库 `http.server`）。
+
+---
+
 ## 许可证
 
 本仓库默认使用 **MIT License**（见仓库根目录 [`LICENSE`](LICENSE)）：他人可自由使用、修改与再分发，但需保留版权声明与许可全文；**不提供任何明示或默示担保**。可将 `LICENSE` 中的版权行改为你的真实姓名或组织名，并与实际权利归属一致。
