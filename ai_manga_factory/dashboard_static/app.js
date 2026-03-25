@@ -14,6 +14,7 @@ function tagPass(v) {
 
 let lastData = null;
 let selectedEp = null;
+let charDrawerReturnToEpid = null;
 
 async function loadDashboard() {
   const res = await fetch("/api/dashboard");
@@ -112,17 +113,7 @@ function renderEpisodes(data) {
     tr.addEventListener("click", () => {
       const id = parseInt(tr.dataset.epid, 10);
       selectedEp = id;
-      const row = (data.episodes || []).find((x) => x.episode_id === id);
-      const drawer = document.getElementById("ep-drawer");
-      const body = document.getElementById("drawer-body");
-      const title = document.getElementById("drawer-title");
-      if (!row || !drawer || !body || !title) return;
-
-      const details = (data.episode_details || {})[String(id)] || {};
-      title.textContent = `Episode #${id}`;
-      body.innerHTML = renderEpisodeDrawer(details, row);
-      drawer.classList.remove("hidden");
-      drawer.setAttribute("aria-hidden", "false");
+      openEpisodeDrawerById(id);
     });
   });
 }
@@ -139,6 +130,9 @@ function renderEpisodeDrawer(details, row) {
   const vs = details.visual_snapshot || {};
   const gs = details.gate_snapshot || {};
   const files = details.artifacts_presence || {};
+  const ss = details.story_summary || {};
+  const kt = details.key_turns || [];
+  const sd = details.story_script_detail || {};
 
   const riskTags = header.risk_tags || [];
   const riskPills = riskTags.length ? riskTags.map((t) => `<span class="pill">${escapeHtml(t)}</span>`).join("") : `<span class="empty">无明显风险标签</span>`;
@@ -200,7 +194,7 @@ function renderEpisodeDrawer(details, row) {
     : `<table class="mini-table"><thead><tr><th>角色</th><th>视觉状态</th><th>缺项摘要</th></tr></thead><tbody>${castRows
         .map((c) => {
           const missing = c.missing_items && c.missing_items.length ? c.missing_items.join("，") : "";
-          return `<tr>
+          return `<tr data-castid="${escapeHtml(c.cast_id || "")}">
             <td><strong>${escapeHtml(c.display_name || c.cast_id || "")}</strong></td>
             <td>${escapeHtml(c.visual_state || "")}</td>
             <td>${escapeHtml(missing || "—")}</td>
@@ -214,6 +208,96 @@ function renderEpisodeDrawer(details, row) {
   const pkgSummary = latestPkg ? `${latestPkg.pass === true ? "PASS" : latestPkg.pass === false ? "FAIL" : "—"} · ${latestPkg.summary || ""}` : "未找到 package gate（可能尚未跑 judge）";
 
   const debugRaw = details.raw_debug ? JSON.stringify(details.raw_debug, null, 2) : "";
+
+  const storyEmpty = !(ss.one_line || ss.logline || ss.goal || ss.conflict || (ss.must_advance && ss.must_advance.length) || (ss.main_progress && ss.main_progress.length) || ss.cliffhanger);
+  const pillListFromArr = (arr) =>
+    arr && arr.length ? `<div class="pill-list">${arr.map((x) => `<span class="pill">${escapeHtml(String(x))}</span>`).join("")}</div>` : `<div class="empty">—</div>`;
+
+  const mustAdv = ss.must_advance || [];
+  const mainProg = ss.main_progress || [];
+
+  const storyHtml = storyEmpty
+    ? `<div class="empty">暂无剧情摘要（可能缺少 episode_function / plot / series_outline）</div>`
+    : `
+      <div class="empty" style="white-space:pre-wrap;border:1px dashed #2a3038;padding:0.45rem 0.5rem">
+        <strong>一句话</strong>：${escapeHtml(ss.one_line || ss.logline || "—")}
+      </div>
+      <div style="margin-top:0.65rem">
+        <div class="k">本集目标</div>
+        ${pillListFromArr(ss.goal ? [ss.goal] : [])}
+      </div>
+      <div style="margin-top:0.45rem">
+        <div class="k">核心冲突</div>
+        ${pillListFromArr(ss.conflict ? [ss.conflict] : [])}
+      </div>
+      <div style="margin-top:0.45rem">
+        <div class="k">结尾钩子</div>
+        ${pillListFromArr(ss.cliffhanger ? [ss.cliffhanger] : [])}
+      </div>
+      <div style="margin-top:0.65rem">
+        <div class="k">本集推进</div>
+        ${pillListFromArr(mustAdv)}
+      </div>
+      <div style="margin-top:0.45rem">
+        <div class="k">主线进展</div>
+        ${pillListFromArr(mainProg)}
+      </div>
+    `;
+
+  const keyTurnsEmpty = !kt || kt.length === 0;
+  const keyTurnsHtml = keyTurnsEmpty
+    ? `<div class="empty">暂无关键转折（可能缺少结构化字段）</div>`
+    : `<table class="mini-table"><thead><tr><th>type</th><th>描述</th><th>涉及角色</th></tr></thead><tbody>${kt
+        .slice(0, 5)
+        .map((t) => {
+          const roles = t.roles && t.roles.length ? t.roles.join("、") : "—";
+          return `<tr>
+            <td>${escapeHtml(t.type || "—")}</td>
+            <td>${escapeHtml(t.description || "")}</td>
+            <td>${escapeHtml(roles)}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table>`;
+
+  const segs = sd.segments_preview || [];
+  const scenesEmpty = !segs || segs.length === 0;
+  const scenesHtml = scenesEmpty
+    ? `<div class="empty">暂无 storyboard 分镜/对白/seedance 细节（可能缺少 04_storyboard.json）</div>`
+    : `${segs
+        .map((s) => {
+          const dur = s.duration_seconds_min != null || s.duration_seconds_max != null ? `${s.duration_seconds_min ?? "—"}~${s.duration_seconds_max ?? "—"}s` : "—";
+          const loc = s.location || "未知地点";
+          const dialogues = (s.dialogue_lines || [])
+            .slice(0, 12)
+            .map((d) => `<div><strong>${escapeHtml(d.speaker || "")}：</strong>${escapeHtml(d.line || "")}</div>`)
+            .join("");
+          const seedTrunc = s.seedance_video_prompt_truncated ? `<div class="empty" style="margin-top:0.35rem">seedance 提示词已截断</div>` : "";
+          return `<details class="scene-detail">
+            <summary>${escapeHtml(String(s.segment_id ?? ""))} · ${escapeHtml(String(loc))} · ${escapeHtml(String(dur))}</summary>
+            <div style="margin-top:0.5rem">
+              <div class="kv">
+                <div class="k">场景</div><div>${escapeHtml(String(s.scene_id ?? "—"))}</div>
+                <div class="k">时间</div><div>${escapeHtml(String(s.time_of_day ?? "—"))}</div>
+              </div>
+              <div style="margin-top:0.5rem">
+                <div class="k">剧情（narration）</div>
+                <div class="empty prompt-box" style="margin-top:0.35rem">${escapeHtml(s.narration || "—")}</div>
+              </div>
+              <div style="margin-top:0.5rem">
+                <div class="k">对白</div>
+                <div class="empty" style="margin-top:0.35rem">${dialogues || "—"}</div>
+              </div>
+              <div style="margin-top:0.5rem">
+                <div class="k">Seedance 视频提示词</div>
+                <div class="empty prompt-box" style="margin-top:0.35rem">${escapeHtml(s.seedance_video_prompt || "—")}</div>
+                ${seedTrunc}
+              </div>
+            </div>
+          </details>`;
+        })
+        .join("")}
+      ${sd.truncated ? `<div class="empty" style="margin-top:0.45rem">分镜较多，已截断展示（为避免 payload 过大）</div>` : ""}
+    `;
 
   const filesHtml = (() => {
     const f = files.files || {};
@@ -254,6 +338,21 @@ function renderEpisodeDrawer(details, row) {
       </div>
       <div style="margin-top:0.65rem" class="empty">rerun hint：${escapeHtml(header.rerun_hint_summary || "—")}</div>
       <div class="empty">recovery：${escapeHtml(gs.recovery_light_hint || "—")}</div>
+    </div>
+
+    <div class="dsec">
+      <h3>Story Summary（剧情摘要）</h3>
+      ${storyHtml}
+    </div>
+
+    <div class="dsec">
+      <h3>Key Turns（关键转折）</h3>
+      ${keyTurnsHtml}
+    </div>
+
+    <div class="dsec">
+      <h3>分镜 / 对话 / Seedance</h3>
+      ${scenesHtml}
     </div>
 
     <div class="dsec">
@@ -309,6 +408,191 @@ function renderEpisodeDrawer(details, row) {
       <h3>Raw JSON（可调试，默认折叠不可展示展开按钮，避免影响阅读）</h3>
       <div class="empty" style="white-space:pre-wrap;max-height:220px;overflow:auto;border:1px dashed #2a3038;padding:0.5rem;margin-top:0.5rem">
         ${escapeHtml(debugRaw || "{}")}
+      </div>
+    </div>
+  `;
+}
+
+function openEpisodeDrawerById(epid) {
+  selectedEp = epid;
+  if (!lastData) return;
+  const row = (lastData.episodes || []).find((x) => x.episode_id === epid);
+  const details = (lastData.episode_details || {})[String(epid)] || {};
+  const epDrawer = document.getElementById("ep-drawer");
+  const body = document.getElementById("drawer-body");
+  const title = document.getElementById("drawer-title");
+  if (!epDrawer || !body || !title) return;
+
+  // 只保持一个 drawer 可见：切到 episode 时收起角色抽屉
+  const charDrawer = document.getElementById("char-drawer");
+  if (charDrawer) charDrawer.classList.add("hidden");
+
+  title.textContent = `Episode #${epid}`;
+  body.innerHTML = renderEpisodeDrawer(details, row || {});
+  epDrawer.classList.remove("hidden");
+  epDrawer.setAttribute("aria-hidden", "false");
+
+  // Episode -> Character
+  body.querySelectorAll("tr[data-castid]").forEach((tr) => {
+    tr.addEventListener("click", () => {
+      const cid = tr.getAttribute("data-castid") || "";
+      if (!cid) return;
+      openCharacterDrawerByCastId(cid);
+    });
+  });
+}
+
+function openCharacterDrawerByCastId(castId) {
+  if (!lastData) return;
+  const profile = (lastData.character_details || {})[String(castId)] || null;
+  const charDrawer = document.getElementById("char-drawer");
+  const body = document.getElementById("char-drawer-body");
+  const title = document.getElementById("char-drawer-title");
+  if (!charDrawer || !body || !title) return;
+
+  const epDrawer = document.getElementById("ep-drawer");
+  charDrawerReturnToEpid = epDrawer && !epDrawer.classList.contains("hidden") ? selectedEp : null;
+
+  // 只保持一个 drawer 可见：切到角色时收起 episode 抽屉
+  if (epDrawer) epDrawer.classList.add("hidden");
+
+  const name = profile?.basic_info?.name || String(castId);
+  title.textContent = `角色 · ${name}`;
+  body.innerHTML = renderCharacterDrawer(profile);
+  charDrawer.classList.remove("hidden");
+  charDrawer.setAttribute("aria-hidden", "false");
+
+  // Character -> Episode
+  body.querySelectorAll("[data-epid]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const epid = parseInt(el.getAttribute("data-epid") || "", 10);
+      if (Number.isNaN(epid)) return;
+      charDrawer.classList.add("hidden");
+      openEpisodeDrawerById(epid);
+    });
+  });
+}
+
+function renderCharacterDrawer(profile) {
+  if (!profile) {
+    return `<div class="empty">未找到角色详情</div>`;
+  }
+  const basic = profile.basic_info || {};
+  const vp = profile.visual_profile || {};
+  const ss = profile.story_state || {};
+  const ep = profile.episode_presence || {};
+  const appearanceLock = vp.appearance_lock || {};
+  const seedPrompts = vp.seedance_prompts || {};
+
+  const missing = vp.missing_items && vp.missing_items.length ? vp.missing_items : [];
+  const missingHtml = missing.length
+    ? `<div class="pill-list">${missing.map((m) => `<span class="pill">${escapeHtml(m)}</span>`).join("")}</div>`
+    : `<div class="empty">无缺项</div>`;
+
+  const cr = vp.consistency_rules || [];
+  const crHtml = cr.length ? `<div class="pill-list">${cr.map((x) => `<span class="pill">${escapeHtml(x)}</span>`).join("")}</div>` : `<div class="empty">无 consistency_rules</div>`;
+
+  const appeared = ep.appeared_episodes || [];
+  const rangeHint = ep.range_hint || "";
+  const appearedHtml =
+    appeared.length === 0
+      ? `<div class="empty">无出场轨迹（可能缺少 knowledge_fence 或 series_memory）</div>`
+      : `<div class="pill-list">${appeared.map((e) => `<span class="pill" data-epid="${escapeHtml(String(e))}">Ep ${escapeHtml(String(e))}</span>`).join("")}</div>${
+          rangeHint ? `<div class="empty" style="margin-top:0.35rem">范围：${escapeHtml(rangeHint)}</div>` : ""
+        }`;
+
+  const recent = ep.recent_episodes || [];
+  const recentHtml =
+    recent.length === 0
+      ? `<div class="empty">暂无 recent episodes</div>`
+      : `<div class="pill-list">${recent.map((e) => `<span class="pill">${escapeHtml(String(e))}</span>`).join("")}</div>`;
+
+  return `
+    <div class="dsec">
+      <h3>Basic Info</h3>
+      <div class="kv">
+        <div class="k">Name</div><div>${escapeHtml(basic.name || "")}</div>
+        <div class="k">Role</div><div>${escapeHtml(basic.role || "")}</div>
+        <div class="k">角色描述</div><div>${escapeHtml(basic.role_description || basic.role || "")}</div>
+        <div class="k">Gender</div><div>${escapeHtml(basic.gender || "")}</div>
+        <div class="k">Age</div><div>${escapeHtml(basic.age_range || "")}</div>
+      </div>
+      <div class="empty" style="margin-top:0.5rem">${escapeHtml(basic.short_description || "")}</div>
+      ${basic.core_personality && basic.core_personality.length ? `<div class="pill-list" style="margin-top:0.5rem">${basic.core_personality.slice(0,8).map((x) => `<span class="pill">${escapeHtml(x)}</span>`).join("")}</div>` : ``}
+    </div>
+
+    <div class="dsec">
+      <h3>Visual Profile</h3>
+      <div class="mini-stats">
+        <span>visual state <strong>${escapeHtml(vp.visual_state || "")}</strong></span>
+      </div>
+      <div class="k">Missing items</div>
+      ${missingHtml}
+      <div style="margin-top:0.65rem">
+        <div class="k">consistency_rules</div>
+        ${crHtml}
+      </div>
+      <div style="margin-top:0.65rem">
+        <div class="k">形象描述（appearance_lock）</div>
+        ${Object.keys(appearanceLock || {}).length
+          ? `<div class="kv" style="margin-top:0.35rem">
+              <div class="k">face_shape</div><div>${escapeHtml(appearanceLock.face_shape || "—")}</div>
+              <div class="k">hair</div><div>${escapeHtml(appearanceLock.hair || "—")}</div>
+              <div class="k">eyes</div><div>${escapeHtml(appearanceLock.eyes || "—")}</div>
+              <div class="k">body_type</div><div>${escapeHtml(appearanceLock.body_type || "—")}</div>
+              <div class="k">default_outfit</div><div>${escapeHtml(appearanceLock.default_outfit || "—")}</div>
+            </div>
+            ${
+              appearanceLock.signature_features && appearanceLock.signature_features.length
+                ? `<div style="margin-top:0.5rem" class="k">signature_features</div>
+                  <div class="pill-list">${appearanceLock.signature_features.slice(0,10).map((x) => `<span class="pill">${escapeHtml(String(x))}</span>`).join("")}</div>`
+                : `<div style="margin-top:0.5rem" class="empty">signature_features —</div>`
+            }
+            ${
+              appearanceLock.color_palette && appearanceLock.color_palette.length
+                ? `<div style="margin-top:0.5rem" class="k">color_palette</div>
+                  <div class="pill-list">${appearanceLock.color_palette.slice(0,10).map((x) => `<span class="pill">${escapeHtml(String(x))}</span>`).join("")}</div>`
+                : ""
+            }`
+          : `<div class="empty" style="margin-top:0.35rem">无 appearance_lock（可能缺少 character_bible）</div>`}
+      </div>
+      <div style="margin-top:0.65rem">
+        <div class="k">Seedance 提示词</div>
+        ${seedPrompts && (seedPrompts.face_triptych_prompt_cn || seedPrompts.body_triptych_prompt_cn || seedPrompts.negative_prompt_cn)
+          ? `<div style="margin-top:0.45rem">
+              <div class="k">face_triptych_prompt_cn</div>
+              <div class="empty prompt-box" style="margin-top:0.35rem">${escapeHtml(seedPrompts.face_triptych_prompt_cn || "—")}</div>
+            </div>
+            <div style="margin-top:0.45rem">
+              <div class="k">body_triptych_prompt_cn</div>
+              <div class="empty prompt-box" style="margin-top:0.35rem">${escapeHtml(seedPrompts.body_triptych_prompt_cn || "—")}</div>
+            </div>
+            <div style="margin-top:0.45rem">
+              <div class="k">negative_prompt_cn</div>
+              <div class="empty prompt-box" style="margin-top:0.35rem">${escapeHtml(seedPrompts.negative_prompt_cn || "—")}</div>
+            </div>`
+          : `<div class="empty" style="margin-top:0.35rem">无 seedance 提示词</div>`}
+      </div>
+    </div>
+
+    <div class="dsec">
+      <h3>Story State</h3>
+      <div class="mini-stats">
+        <span>first_seen <strong>${escapeHtml(ss.first_seen_episode ?? "—")}</strong></span>
+        <span>last_seen <strong>${escapeHtml(ss.last_seen_episode ?? "—")}</strong></span>
+        <span>state <strong>${escapeHtml(ss.current_state || "unknown")}</strong></span>
+      </div>
+      <div class="empty" style="margin-top:0.5rem">
+        related promises: ${escapeHtml(ss.related_promise_count ?? 0)} · related facts: ${escapeHtml(ss.related_knowledge_fact_count ?? 0)}
+      </div>
+    </div>
+
+    <div class="dsec">
+      <h3>Episode Presence</h3>
+      ${appearedHtml}
+      <div style="margin-top:0.65rem">
+        <div class="k">Recent</div>
+        ${recentHtml}
       </div>
     </div>
   `;
@@ -396,9 +680,14 @@ function renderVl(data) {
   const c = vl.counts || {};
   const host = document.getElementById("vl-panel");
   const mem = (vl.memory_only_names || []).filter(Boolean);
+  const total = (c.complete || 0) + (c.partial || 0) + (c.missing || 0);
+  const incomplete = (c.partial || 0) + (c.missing || 0);
   host.innerHTML = `
     <p class="mini-stats">
-      complete <strong>${c.complete ?? 0}</strong> · partial <strong>${c.partial ?? 0}</strong> · missing <strong>${c.missing ?? 0}</strong>
+      角色总数 <strong>${escapeHtml(total)}</strong> · incomplete <strong>${escapeHtml(incomplete)}</strong>
+      · complete <strong>${escapeHtml(c.complete ?? 0)}</strong> · partial <strong>${escapeHtml(c.partial ?? 0)}</strong> · missing <strong>${escapeHtml(
+    c.missing ?? 0
+  )}</strong>
       · 覆盖率（complete） <strong>${vl.coverage_complete_pct ?? "—"}%</strong>
     </p>
     ${mem.length ? `<p>仅 memory、圣经未齐：<strong>${mem.map(escapeHtml).join("、")}</strong></p>` : "<p>无「仅 memory」名单或已全部对齐。</p>"}
@@ -407,7 +696,7 @@ function renderVl(data) {
         .slice(0, 48)
         .map(
           (ch) => `
-        <div class="vl-card">
+        <div class="vl-card" data-castid="${escapeHtml(String(ch.cast_id || ""))}">
           <div><strong>${escapeHtml(String(ch.display_name || ch.cast_id || ""))}</strong></div>
           <div class="tag ${ch.lock_status === "complete" ? "pass" : ch.lock_status === "partial" ? "warn" : "fail"}">${escapeHtml(
             String(ch.lock_status || "?")
@@ -481,6 +770,31 @@ if (epDrawer && btnDrawerClose) {
   btnDrawerClose.addEventListener("click", () => {
     epDrawer.classList.add("hidden");
     epDrawer.setAttribute("aria-hidden", "true");
+  });
+}
+
+const charDrawer = document.getElementById("char-drawer");
+const btnCharDrawerClose = document.getElementById("btn-char-drawer-close");
+if (charDrawer && btnCharDrawerClose) {
+  btnCharDrawerClose.addEventListener("click", () => {
+    if (charDrawerReturnToEpid != null) {
+      openEpisodeDrawerById(charDrawerReturnToEpid);
+      return;
+    }
+    charDrawer.classList.add("hidden");
+    charDrawer.setAttribute("aria-hidden", "true");
+  });
+}
+
+// Visual Lock 面板：点击角色卡片打开 Character Drawer
+const vlPanel = document.getElementById("vl-panel");
+if (vlPanel) {
+  vlPanel.addEventListener("click", (e) => {
+    const card = e.target.closest(".vl-card[data-castid]");
+    if (!card) return;
+    const cid = card.getAttribute("data-castid") || "";
+    if (!cid) return;
+    openCharacterDrawerByCastId(cid);
   });
 }
 

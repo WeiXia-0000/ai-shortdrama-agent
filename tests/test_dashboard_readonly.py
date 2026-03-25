@@ -30,6 +30,8 @@ class TestDashboardReadonly(unittest.TestCase):
         self.assertEqual(payload["episodes"], [])
         self.assertIn("episode_details", payload)
         self.assertEqual(payload["episode_details"], {})
+        self.assertIn("character_details", payload)
+        self.assertEqual(payload["character_details"], {})
         self.assertEqual(payload["promises"]["summary_counts"].get("open"), 0)
         self.assertEqual(payload["knowledge_fence"]["stats"]["total"], 0)
         self.assertEqual(payload["visual_lock"]["counts"]["complete"], 0)
@@ -139,11 +141,15 @@ class TestDashboardReadonly(unittest.TestCase):
         self.assertIn("1", payload["episode_details"])
         d = payload["episode_details"]["1"]
         self.assertIn("header", d)
+        self.assertIn("story_summary", d)
+        self.assertIn("key_turns", d)
+        self.assertIn("story_script_detail", d)
         self.assertIn("promise_snapshot", d)
         self.assertIn("knowledge_snapshot", d)
         self.assertIn("visual_snapshot", d)
         self.assertIn("gate_snapshot", d)
         self.assertIn("artifacts_presence", d)
+        self.assertIn("character_details", payload)
 
     def test_load_registry_readonly_missing(self) -> None:
         root = Path(__file__).resolve().parent / "_tmp_dash_ro" / "nom"

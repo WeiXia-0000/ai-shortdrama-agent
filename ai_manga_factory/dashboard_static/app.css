@@ -119,8 +119,8 @@ th {
   position: sticky;
   top: 0;
 }
-tbody tr { cursor: pointer; }
-tbody tr:hover { background: #1f242c; }
+#tbody-ep tr { cursor: pointer; }
+#tbody-ep tr:hover { background: #1f242c; }
 .tag {
   display: inline-block;
   padding: 0.1rem 0.4rem;
@@ -243,6 +243,30 @@ tbody tr:hover { background: #1f242c; }
   color: var(--muted);
   font-size: 0.78rem;
 }
+
+.prompt-box {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px dashed #2a3038;
+  padding: 0.45rem 0.5rem;
+  background: #0d1014;
+}
+
+.scene-detail {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.6rem;
+  background: #12161c;
+}
+
+.scene-detail summary {
+  cursor: pointer;
+  color: #c7ced8;
+  font-weight: 600;
+}
 .mini-table {
   width: 100%;
   border-collapse: collapse;
@@ -253,3 +277,9 @@ tbody tr:hover { background: #1f242c; }
   padding: 0.34rem 0.4rem;
   vertical-align: top;
 }
+
+#ep-drawer .mini-table tbody tr[data-castid] { cursor: pointer; }
+#ep-drawer .mini-table tbody tr[data-castid]:hover { background: #1f242c; }
+.vl-card[data-castid] { cursor: pointer; }
+.vl-card[data-castid]:hover { border-color: var(--info); }
+.pill[data-epid] { cursor: pointer; }

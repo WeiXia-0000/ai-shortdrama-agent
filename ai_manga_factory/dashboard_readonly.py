@@ -116,6 +116,392 @@ def _norm_ep_id(x: Any) -> Optional[int]:
         return None
 
 
+def _nonblank_str(x: Any, min_len: int = 1) -> str:
+    s = str(x or "")
+    s = s.strip()
+    return s if len(s) >= min_len else ""
+
+
+def _first_n_str_list(v: Any, n: int = 3) -> List[str]:
+    if isinstance(v, list):
+        out: List[str] = []
+        for it in v:
+            if len(out) >= n:
+                break
+            if isinstance(it, str) and it.strip():
+                out.append(it.strip())
+        return out
+    return []
+
+
+def _extract_roles_from_text(text: str, candidates: List[str], max_roles: int = 3) -> List[str]:
+    if not isinstance(text, str) or not text.strip():
+        return []
+    found: List[str] = []
+    for c in candidates:
+        if not isinstance(c, str) or not c.strip():
+            continue
+        if c in text:
+            found.append(c.strip())
+    uniq = list(dict.fromkeys(found))
+    return uniq[:max_roles]
+
+
+def build_episode_story_summary(
+    *,
+    ef_json: Dict[str, Any],
+    plot_json: Dict[str, Any],
+    series_outline: Dict[str, Any],
+    episode_outline_brief: Optional[Dict[str, Any]],
+    cast_candidates: List[str],
+) -> Dict[str, Any]:
+    one_line = ""
+    if isinstance(episode_outline_brief, dict):
+        one_line = _nonblank_str(episode_outline_brief.get("one_line"), 3)
+    if not one_line:
+        one_line = _nonblank_str(episode_outline_brief.get("hook") if isinstance(episode_outline_brief, dict) else "", 3)  # type: ignore[arg-type]
+    if not one_line:
+        one_line = _nonblank_str(plot_json.get("hook"), 3)
+
+    logline = _nonblank_str(series_outline.get("logline"), 3)
+    goal = _nonblank_str(ef_json.get("episode_goal_in_series"), 3)
+
+    # “冲突”这里做轻量归纳：优先用 mislearn（误判/误学），其次用 what_changes_persistently（关系破裂/局势变化）。
+    conflict = ""
+    mis = _first_n_str_list(ef_json.get("what_is_mislearned"), n=2)
+    if mis:
+        conflict = mis[0]
+    else:
+        ch = _first_n_str_list(ef_json.get("what_changes_persistently"), n=1)
+        if ch:
+            conflict = ch[0]
+        else:
+            lc = plot_json.get("logic_check") or {}
+            if isinstance(lc, dict):
+                conflict = _nonblank_str(lc.get("what_would_break_if_this_episode_were_removed"), 10)
+
+    must_advance = _first_n_str_list(ef_json.get("must_advance"), n=3)
+
+    main_progress: List[str] = []
+    lc = plot_json.get("logic_check") or {}
+    if isinstance(lc, dict):
+        main_progress = _first_n_str_list(lc.get("what_new_longterm_change_is_created"), n=3)
+    if not main_progress:
+        main_progress = must_advance[:]
+
+    cliffhanger = _nonblank_str(plot_json.get("cliffhanger"), 3)
+    if not cliffhanger and isinstance(episode_outline_brief, dict):
+        cliffhanger = _nonblank_str(episode_outline_brief.get("cliffhanger"), 3)
+    if not cliffhanger:
+        cliffhanger = _nonblank_str((lc or {}).get("what_would_break_if_this_episode_were_removed"), 10)  # type: ignore[union-attr]
+
+    involved_roles = _extract_roles_from_text(one_line + "\n" + (conflict or ""), cast_candidates, max_roles=3)
+
+    return {
+        "one_line": one_line,
+        "logline": logline,
+        "goal": goal,
+        "conflict": conflict,
+        "must_advance": must_advance,
+        "main_progress": main_progress,
+        "cliffhanger": cliffhanger,
+        "involved_roles": involved_roles,
+    }
+
+
+def build_episode_key_turns(
+    *,
+    ef_json: Dict[str, Any],
+    plot_json: Dict[str, Any],
+    cast_candidates: List[str],
+) -> List[Dict[str, Any]]:
+    turns: List[Dict[str, Any]] = []
+
+    def add(turn_type: str, desc: Any) -> None:
+        if not isinstance(desc, str) or not desc.strip():
+            return
+        if len(turns) >= 5:
+            return
+        roles = _extract_roles_from_text(desc, cast_candidates, max_roles=3)
+        turns.append({"type": turn_type, "description": desc.strip()[:160], "roles": roles})
+
+    for x in _first_n_str_list(ef_json.get("what_changes_persistently"), n=2):
+        add("shift", x)
+    for x in _first_n_str_list(ef_json.get("what_is_learned"), n=2):
+        add("learn", x)
+    for x in _first_n_str_list(ef_json.get("what_is_mislearned"), n=2):
+        add("mislearn", x)
+    for x in _first_n_str_list(ef_json.get("what_is_lost"), n=1):
+        add("loss", x)
+    for x in _first_n_str_list(ef_json.get("future_threads_strengthened"), n=2):
+        add("reveal", x)
+
+    lc = plot_json.get("logic_check") or {}
+    if isinstance(lc, dict):
+        for x in _first_n_str_list(lc.get("what_new_longterm_change_is_created"), n=2):
+            add("reveal", x)
+
+    return turns[:5]
+
+
+def _truncate_str(s: Any, max_chars: int) -> str:
+    if not isinstance(s, str):
+        return ""
+    ss = s.strip()
+    if len(ss) <= max_chars:
+        return ss
+    return ss[:max_chars].rstrip() + "…"
+
+
+def build_episode_story_script_detail(
+    *,
+    ep_files: Dict[str, Path],
+    max_segments: int = 0,
+    max_seedance_chars: int = 2200,
+) -> Dict[str, Any]:
+    storyboard = {}
+    try:
+        storyboard = _load_json(ep_files.get("storyboard") or {}) or {}
+    except Exception:
+        storyboard = {}
+
+    segments = storyboard.get("segments") or []
+    if not isinstance(segments, list):
+        segments = []
+
+    total = len(segments)
+    preview = segments[: max_segments] if max_segments > 0 else segments
+
+    def map_dialogue_lines(lines: Any) -> List[Dict[str, Any]]:
+        if not isinstance(lines, list):
+            return []
+        out: List[Dict[str, Any]] = []
+        for it in lines:
+            if not isinstance(it, dict):
+                continue
+            sp = it.get("speaker")
+            ln = it.get("line")
+            if isinstance(sp, str) and isinstance(ln, str) and sp.strip() and ln.strip():
+                out.append({"speaker": sp.strip(), "line": ln.strip()})
+            if len(out) >= 14:
+                break
+        return out
+
+    out_segments: List[Dict[str, Any]] = []
+    for seg in preview:
+        if not isinstance(seg, dict):
+            continue
+        seed_prompt = seg.get("seedance_video_prompt")
+        seed_trunc = False
+        if isinstance(seed_prompt, str) and len(seed_prompt.strip()) > max_seedance_chars:
+            seed_trunc = True
+        out_segments.append(
+            {
+                "segment_id": seg.get("segment_id"),
+                "scene_id": seg.get("scene_id"),
+                "duration_seconds_min": seg.get("duration_seconds_min"),
+                "duration_seconds_max": seg.get("duration_seconds_max"),
+                "location": seg.get("location"),
+                "time_of_day": seg.get("time_of_day"),
+                "characters_in_frame": seg.get("characters_in_frame") if isinstance(seg.get("characters_in_frame"), list) else [],
+                "narration": _truncate_str(seg.get("narration"), 2800),
+                "emotion_tone": _truncate_str(seg.get("emotion_tone"), 280),
+                "dialogue_lines": map_dialogue_lines(seg.get("dialogue_lines")),
+                "seedance_video_prompt": _truncate_str(seed_prompt, max_seedance_chars),
+                "seedance_video_prompt_truncated": seed_trunc,
+            }
+        )
+
+    return {
+        "has_storyboard": bool(total),
+        "total_segments": total,
+        "preview_limit": max_segments,
+        "truncated": total > len(out_segments),
+        "segments_preview": out_segments,
+    }
+
+
+def _cast_name_from_row(c: Dict[str, Any]) -> str:
+    return str(c.get("display_name") or c.get("name") or c.get("cast_id") or "").strip()
+
+
+def build_character_profile(
+    *,
+    char_row: Dict[str, Any],
+    character_bible: Dict[str, Any],
+    series_memory: Dict[str, Any],
+    promises_raw: List[Dict[str, Any]],
+    facts_raw: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    cast_id = str(char_row.get("cast_id") or "")
+    name = _cast_name_from_row(char_row)
+    lock_status = str(char_row.get("lock_status") or "")
+
+    bible_entry: Optional[Dict[str, Any]] = None
+    for c in character_bible.get("main_characters") or []:
+        if not isinstance(c, dict):
+            continue
+        if str(c.get("name") or "") == name:
+            bible_entry = c
+            break
+
+    mem_entry: Optional[Dict[str, Any]] = None
+    for c in series_memory.get("characters") or []:
+        if not isinstance(c, dict):
+            continue
+        if str(c.get("name") or "") == name:
+            mem_entry = c
+            break
+
+    # Visual Profile: 基于 bible 字段是否存在做“缺项摘要”
+    appearance_lock = (bible_entry or {}).get("appearance_lock") if isinstance(bible_entry, dict) else None
+    face_ok = bool(_nonblank_str((bible_entry or {}).get("face_triptych_prompt_cn"), 10)) if isinstance(bible_entry, dict) else False
+    body_ok = bool(_nonblank_str((bible_entry or {}).get("body_triptych_prompt_cn"), 10)) if isinstance(bible_entry, dict) else False
+    neg_ok = bool(_nonblank_str((bible_entry or {}).get("negative_prompt_cn"), 3)) if isinstance(bible_entry, dict) else False
+    al_ok = isinstance(appearance_lock, dict) and bool(appearance_lock)
+
+    missing_items: List[str] = []
+    if not face_ok:
+        missing_items.append("face_prompt")
+    if not body_ok:
+        missing_items.append("body_prompt")
+    if not neg_ok:
+        missing_items.append("negative_prompt")
+    if not al_ok:
+        missing_items.append("appearance_lock")
+
+    consistency_rules = (bible_entry or {}).get("consistency_rules") if isinstance(bible_entry, dict) else None
+    cr_list: List[str] = []
+    if isinstance(consistency_rules, list):
+        cr_list = [str(x).strip() for x in consistency_rules if isinstance(x, str) and x.strip()][:10]
+
+    # Story State: 从 series_memory 的角色状态 + knowledge_fence / promise_lane 做计数
+    facts_for_char = [
+        f
+        for f in facts_raw
+        if isinstance(f, dict)
+        and name
+        and name in [str(x) for x in (f.get("known_by") or []) if x is not None]
+    ]
+    kf_first: List[int] = []
+    kf_last: List[int] = []
+    for f in facts_for_char:
+        fe = _norm_ep_id(f.get("first_seen_episode"))
+        le = _norm_ep_id(f.get("last_confirmed_episode") or f.get("last_seen_episode"))
+        if fe is not None:
+            kf_first.append(fe)
+        if le is not None:
+            kf_last.append(le)
+
+    promise_related_count = 0
+    if name:
+        for p in promises_raw:
+            if not isinstance(p, dict):
+                continue
+            desc = str(p.get("description") or "")
+            if name in desc:
+                promise_related_count += 1
+
+    first_seen = None
+    last_seen = None
+    if mem_entry:
+        first_seen = _norm_ep_id(mem_entry.get("first_episode"))
+        last_seen = _norm_ep_id(mem_entry.get("last_appeared_episode") or mem_entry.get("last_seen_episode"))
+    if first_seen is None and kf_first:
+        first_seen = min(kf_first)
+    if last_seen is None and kf_last:
+        last_seen = max(kf_last)
+
+    current_state = None
+    if mem_entry:
+        current_state = mem_entry.get("status")
+    if not current_state:
+        current_state = "unknown"
+
+    appeared_episodes: List[int] = []
+    range_hint = ""
+    if mem_entry:
+        fe = _norm_ep_id(mem_entry.get("first_episode"))
+        le = _norm_ep_id(mem_entry.get("last_appeared_episode"))
+        if fe is not None and le is not None:
+            if le < fe:
+                fe, le = le, fe
+            if le - fe <= 12:
+                appeared_episodes = list(range(fe, le + 1))
+            else:
+                appeared_episodes = [fe, le]
+                range_hint = f"{fe}..{le}"
+
+    recent_episodes = sorted(appeared_episodes)[-5:] if appeared_episodes else []
+    core_personality = (bible_entry or {}).get("core_personality") if isinstance(bible_entry, dict) else None
+    cp = []
+    if isinstance(core_personality, list):
+        cp = [str(x).strip() for x in core_personality if isinstance(x, str) and x.strip()][:8]
+
+    gender = (bible_entry or {}).get("gender") if isinstance(bible_entry, dict) else None
+    age_range = (bible_entry or {}).get("age_range") if isinstance(bible_entry, dict) else None
+    role = (bible_entry or {}).get("role") if isinstance(bible_entry, dict) else None
+
+    short_desc = ""
+    if role and isinstance(role, str):
+        short_desc = role[:80]
+    elif cp:
+        short_desc = cp[0][:80]
+    else:
+        short_desc = ""
+
+    return {
+        "cast_id": cast_id,
+        "basic_info": {
+            "name": name,
+            "role": role or "",
+            "role_description": role or "",
+            "gender": gender or "",
+            "age_range": age_range or "",
+            "core_personality": cp,
+            "short_description": short_desc,
+        },
+        "visual_profile": {
+            "visual_state": lock_status or "unknown",
+            "missing_items": missing_items,
+            "consistency_rules": cr_list,
+            "appearance_lock": appearance_lock if isinstance(appearance_lock, dict) else {},
+            "seedance_prompts": (
+                {
+                    "face_triptych_prompt_cn": (bible_entry or {}).get("face_triptych_prompt_cn")
+                    if isinstance(bible_entry, dict)
+                    else "",
+                    "body_triptych_prompt_cn": (bible_entry or {}).get("body_triptych_prompt_cn")
+                    if isinstance(bible_entry, dict)
+                    else "",
+                    "negative_prompt_cn": (bible_entry or {}).get("negative_prompt_cn")
+                    if isinstance(bible_entry, dict)
+                    else "",
+                }
+                if isinstance(bible_entry, dict)
+                else {}
+            ),
+        },
+        "story_state": {
+            "first_seen_episode": first_seen,
+            "last_seen_episode": last_seen,
+            "current_state": current_state,
+            "related_promise_count": promise_related_count,
+            "related_knowledge_fact_count": len(facts_for_char),
+        },
+        "episode_presence": {
+            "appeared_episodes": appeared_episodes,
+            "range_hint": range_hint,
+            "recent_episodes": recent_episodes,
+        },
+        "raw_debug": {
+            "bible_found": bool(bible_entry),
+            "memory_found": bool(mem_entry),
+            "bible_pointer": char_row.get("bible_pointer"),
+            "notes": char_row.get("notes"),
+        },
+    }
+
 def _promise_touches_episode(p: Dict[str, Any], ep_id: int) -> bool:
     if _norm_ep_id(p.get("created_episode")) == ep_id:
         return True
@@ -266,6 +652,8 @@ def _build_episode_detail(
     ep_dir: Path,
     ep_files: Dict[str, Path],
     gate_doc: Dict[str, Any],
+    series_outline: Dict[str, Any],
+    series_episode_brief: Optional[Dict[str, Any]],
     promises_raw: List[Dict[str, Any]],
     facts_raw: List[Dict[str, Any]],
     vl_chars: List[Dict[str, Any]],
@@ -276,6 +664,7 @@ def _build_episode_detail(
     trend = ep_row.get("trend_summary") or {}
     lv = trend.get("latest_verdict") or {}
     ef_json = _load_json(ep_files["episode_function"]) or {}
+    plot_json = _load_json(ep_files["plot"]) or {}
 
     touched_promises = [p for p in promises_raw if _promise_touches_episode(p, ep_id)]
     new_promises = [p for p in touched_promises if _norm_ep_id(p.get("created_episode")) == ep_id]
@@ -310,6 +699,14 @@ def _build_episode_detail(
         facts_touching=facts_touching,
         relations=relations,
         ef_json=ef_json,
+    )
+    cast_candidates = sorted(
+        set(related_cast_names)
+        | {
+            str(c.get("display_name") or "")
+            for c in vl_chars
+            if isinstance(c, dict) and str(c.get("display_name") or "").strip()
+        }
     )
     related_vl_rows: List[Dict[str, Any]] = []
     for c in vl_chars:
@@ -374,9 +771,27 @@ def _build_episode_detail(
         mtime_ts.append(ts)
     latest_artifact_update = _to_iso_utc_from_ts(max(mtime_ts)) if mtime_ts else None
 
+    story_summary = build_episode_story_summary(
+        ef_json=ef_json,
+        plot_json=plot_json,
+        series_outline=series_outline,
+        episode_outline_brief=series_episode_brief,
+        cast_candidates=cast_candidates,
+    )
+    key_turns = build_episode_key_turns(
+        ef_json=ef_json,
+        plot_json=plot_json,
+        cast_candidates=cast_candidates,
+    )
+
+    story_script_detail = build_episode_story_script_detail(ep_files=ep_files, max_segments=0)
+
     return {
         "episode_id": ep_id,
         "title": ep_row.get("title") or f"第{ep_id}集",
+        "story_summary": story_summary,
+        "key_turns": key_turns,
+        "story_script_detail": story_script_detail,
         "header": {
             "episode_overall_gate": ep_row.get("episode_overall_gate"),
             "plot_gate_pass": ep_row.get("plot_gate_pass"),
@@ -460,6 +875,14 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
     if isinstance(episode_list, list):
         planned_episodes = len(episode_list)
 
+    series_episode_brief_by_id: Dict[int, Dict[str, Any]] = {}
+    if isinstance(episode_list, list):
+        for item in episode_list:
+            if isinstance(item, dict) and isinstance(item.get("episode_id"), (int, str)):
+                eid = _norm_ep_id(item.get("episode_id"))
+                if eid is not None:
+                    series_episode_brief_by_id[eid] = item
+
     si = registry.get("series_identity") or {}
     genre_key = str(si.get("genre_key") or "")
     display_title = str(si.get("display_title") or _series_title(paths))
@@ -513,6 +936,29 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
     relations = [
         r for r in ((registry.get("relation_pressure_map") or {}).get("relations") or []) if isinstance(r, dict)
     ]
+
+    # Character Drawer 数据：角色圣经 + series_memory（用于状态） + 本系列 registry 切片计数
+    character_bible = _load_json(paths["character_bible"]) or {}
+    if not isinstance(character_bible, dict):
+        character_bible = {}
+    series_memory = _load_json(paths["series_memory"]) or {}
+    if not isinstance(series_memory, dict):
+        series_memory = {}
+
+    character_details: Dict[str, Any] = {}
+    for c in vl_chars:
+        if not isinstance(c, dict):
+            continue
+        cid = str(c.get("cast_id") or "")
+        if not cid:
+            continue
+        character_details[cid] = build_character_profile(
+            char_row=c,
+            character_bible=character_bible,
+            series_memory=series_memory,
+            promises_raw=promises_raw,
+            facts_raw=facts_raw,
+        )
 
     ep_dirs = _iter_episode_dirs(paths["episodes_root"], layout)
     episode_dir_count = len(ep_dirs)
@@ -591,6 +1037,8 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
             ep_dir=ep_dir,
             ep_files=ep_files,
             gate_doc=doc,
+            series_outline=outline,
+            series_episode_brief=series_episode_brief_by_id.get(ep_id),
             promises_raw=promises_raw,
             facts_raw=facts_raw,
             vl_chars=vl_chars,
@@ -630,6 +1078,7 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
         "overview": overview,
         "episodes": episodes_out,
         "episode_details": episode_details,
+        "character_details": character_details,
         "promises": {
             "summary_counts": summary_counts,
             "supersede_digest": supersede_digest,
