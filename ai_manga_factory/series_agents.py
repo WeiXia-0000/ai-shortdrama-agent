@@ -281,7 +281,7 @@ episode_function_agent = Agent(
     model=MODEL,
     description="生成本集在整季中的功能卡：承接 anchor、必须推进/继承项、持久变化、观众爽点设计与线索强化。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "episode_id": int,\n  "linked_anchor_ids": [int],\n  "episode_goal_in_series": str,\n  "must_advance": [str],\n  "must_inherit": [str],\n  "what_changes_persistently": [str],\n  "what_is_learned": [str],\n  "what_is_mislearned": [str],\n  "what_is_gained": [str],\n  "what_is_lost": [str],\n  "future_threads_strengthened": [str],\n  "viewer_payoff_design": [\n    {\n      "type": str,\n      "setup_source": str,\n      "payoff_target": str,\n      "description": str\n    }\n  ]\n}\n',
+        schema_hint='{\n  "episode_id": int,\n  "linked_anchor_ids": [int],\n  "episode_goal_in_series": str,\n  "must_advance": [str],\n  "must_inherit": [str],\n  "what_changes_persistently": [str],\n  "what_is_learned": [str],\n  "what_is_mislearned": [str],\n  "what_is_gained": [str],\n  "what_is_lost": [str],\n  "future_threads_strengthened": [str],\n  "viewer_payoff_design": [\n    {\n      "type": str,\n      "setup_source": str,\n      "payoff_target": str,\n      "description": str\n    }\n  ],\n  \n  "contract_key_turn_mapping": str,\n  "contract_price_paid_mapping": str,\n  "contract_visual_event_mapping": str,\n  "contract_cannot_remove_support": str,\n  "contract_risk_if_softened": str,\n  "contract_tension_or_missing_density": str\n}\n',
         constraints=[
             "严格输出合法 JSON（一个且仅一个 JSON 对象）；不允许额外自然语言。",
             "episode_id 必须与输入一致。",
@@ -295,6 +295,12 @@ episode_function_agent = Agent(
             "must: viewer_payoff_design 至少 2 条；每条须含 type（如 rule_exploit/shock/reversal/emotional_hit）、payoff_target（如 early_hook/act2_or_act3/closing）、description（中文，可执行）。",
             "should: setup_source 可指向 must_inherit/must_advance 等，说明爽点承接来源；无则写空字符串。",
             "should: what_is_mislearned 可写主角或团队的错误认知，为后续反噬埋伏笔。",
+            "must: contract_key_turn_mapping 需要明确说明本功能卡如何兑现 dense contract.key_turn（不得只复述合同）。",
+            "must: contract_price_paid_mapping 需要明确说明本功能卡如何落实 dense contract.price_paid 到代价与持久变化（不得只复述合同）。",
+            "must: contract_visual_event_mapping 需要明确说明本功能卡如何落实 dense contract.visual_or_public_event 到 viewer_payoff_design/节拍目标（不得只复述合同）。",
+            "must: contract_cannot_remove_support 必须引用 must_advance/must_payoff/must_set_up/status_shift 中至少一项，并用一句话解释删掉会损失什么。",
+            "must: contract_risk_if_softened 必须描述若写薄会损失什么（主线推进/关系位移/回收/世界推进/下一集钩子，至少一类）。",
+            "must: contract_tension_or_missing_density 必须基于当前 dense contract 的字段是否空洞/冲突/低密度进行判断；若密度足够则明确写无明显张力空洞。",
             "avoid: 不要写具体分镜台词，不要替代 plot 的节拍细节；viewer_payoff_design 只定义观众层目标，不写具体台词。",
         ],
     ),

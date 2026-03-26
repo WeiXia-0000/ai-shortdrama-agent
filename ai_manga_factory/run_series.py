@@ -24,6 +24,10 @@ from .genre_rules import (
     infer_genre_bundle_for_prompt,
     summarize_genre_bundle_for_debug,
 )
+from .outline_validator import (
+    summarize_dense_outline_validation,
+    validate_dense_outline,
+)
 from . import series_agents
 from .carry_registry import ensure_registry_file, load_registry, save_registry, sync_carry_registry_minimal
 
@@ -189,6 +193,12 @@ def _validate_stage_output(
                 "must_inherit",
                 "future_threads_strengthened",
                 "viewer_payoff_design",
+                "contract_key_turn_mapping",
+                "contract_price_paid_mapping",
+                "contract_visual_event_mapping",
+                "contract_cannot_remove_support",
+                "contract_risk_if_softened",
+                "contract_tension_or_missing_density",
             ],
         )
         vpd = obj.get("viewer_payoff_design")
@@ -360,6 +370,28 @@ def _unique_episode_dir(episodes_root: Path, series_title: str, ep_id: int) -> P
         if not c2.exists():
             return c2
         n += 1
+
+
+def _episode_dir_for_id_or_create(episodes_root: Path, series_title: str, ep_id: int) -> Path:
+    """
+    生产链目录策略：
+    - 已存在且可解析到 episode_id：复用
+    - 同 episode_id 存在多个目录：报冲突（不要静默落到 _2/_3）
+    - 不存在：创建标准目录（不使用 _2/_3）
+    """
+    _ensure_dir(episodes_root)
+    found, err = find_episode_dir_for_id(episodes_root, ep_id)
+    if err:
+        # find_episode_dir_for_id 在“未找到目录”时也会返回 err 文本；这不是致命错误。
+        if "存在多个目录" in err:
+            raise RuntimeError(err)
+    if found is not None:
+        return found
+
+    base = f"{series_title}_第{ep_id:03d}集"
+    new_dir = episodes_root / base
+    _ensure_dir(new_dir)
+    return new_dir
 
 
 def parse_episode_id_from_dirname(dirname: str) -> Optional[int]:
@@ -915,14 +947,26 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
             session_id=f"series_setup_outline_review_r{oi}",
             debug_dir=debug_dir,
         )
+        # dense outline validator：程序性兜底（不依赖 LLM 自觉）
+        dense_validation = validate_dense_outline(outline_out)
+        dense_summary = summarize_dense_outline_validation(dense_validation)
+        print(f"[dense-outline-validator] r{oi}\n{dense_summary}")
+        _dump_json(
+            debug_dir / f"dense_outline_validation_r{oi}.json",
+            dense_validation,
+        )
+
         score = int(outline_review_out.get("overall_score_1to10") or 0)
-        hard_fails = outline_review_out.get("hard_fail_reasons") or []
+        hard_fails = list(outline_review_out.get("hard_fail_reasons") or [])
+        hard_fails.extend(dense_validation.get("hard_fail_reasons") or [])
         if score >= min_outline_score and not hard_fails:
             break
         if oi < max_outline_rounds:
             fix_text = "\n".join([f"- {x}" for x in (outline_review_out.get("must_fix") or [])])
             risk_text = "\n".join([f"- {x}" for x in (outline_review_out.get("risks") or [])])
             rewrite_brief = json.dumps(outline_review_out.get("rewrite_brief", {}), ensure_ascii=False)
+            val_hard = "\n".join([f"- {x}" for x in (dense_validation.get("hard_fail_reasons") or [])])
+            val_warn = "\n".join([f"- {x}" for x in (dense_validation.get("warnings") or [])])
             outline_prompt = (
                 outline_prompt_base
                 + "\n【上一轮评审未过，请重写 series_outline】\n"
@@ -933,6 +977,9 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
                 + (risk_text or "- 无")
                 + "\nrewrite_brief:\n"
                 + rewrite_brief
+                + "\n\n【dense_outline_validator】hard_fail_reasons:\n"
+                + (val_hard or "- 无")
+                + ("\n\nwarnings:\n" + (val_warn or "- 无") if val_warn else "")
             )
             outline_prompt = _inject_genre_prompt_for_stage(
                 concept_bundle, outline_prompt, "episode_outline_expander"
@@ -944,6 +991,12 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"series_outline=\n{json.dumps(outline_out, ensure_ascii=False)}\n"
     )
     cb_prompt = _inject_genre_prompt_for_stage(concept_bundle, cb_prompt_base, "character_bible")
+
+    # dense outline validator final（在进入后续链前必须可见）
+    dense_validation_final = validate_dense_outline(outline_out)
+    dense_summary_final = summarize_dense_outline_validation(dense_validation_final)
+    print(f"[dense-outline-validator] final\n{dense_summary_final}")
+    _dump_json(debug_dir / "dense_outline_validation_final.json", dense_validation_final)
     cb_out = await _run_agent_json_with_qc(
         stage="character_bible",
         agent=series_agents.character_bible_agent,
@@ -976,6 +1029,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "anchor_beats": anchor_beats_out,
         "series_outline": outline_out,
         "outline_review": outline_review_out,
+        "dense_outline_validation_final": dense_validation_final,
         "character_bible": cb_out,
     }
 
@@ -1178,6 +1232,12 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
     series_outline = json.loads(series_outline_path.read_text(encoding="utf-8"))
     character_bible = json.loads(character_bible_path.read_text(encoding="utf-8"))
 
+    # dense outline validator：防止旧/异常大纲导致分集链条抽象化
+    dense_validation = validate_dense_outline(series_outline)
+    dense_summary = summarize_dense_outline_validation(dense_validation)
+    print(f"[dense-outline-validator][episode-batch]\n{dense_summary}")
+    _dump_json(debug_dir / "dense_outline_validation.json", dense_validation)
+
     anchor_beats_path = paths["anchor_beats"]
     if anchor_beats_path.exists():
         anchor_beats = json.loads(anchor_beats_path.read_text(encoding="utf-8"))
@@ -1221,8 +1281,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
         episodes_out = []
 
     for ep_id in episode_ids:
-        ep_dir = _unique_episode_dir(episodes_root, series_title, ep_id)
-        _ensure_dir(ep_dir)
+        ep_dir = _episode_dir_for_id_or_create(episodes_root, series_title, ep_id)
         ep_files = _episode_json_paths(ep_dir, layout)
 
         ep_row = _episode_outline_row(series_outline, ep_id)
@@ -1301,7 +1360,14 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
 
         function_prompt_base = (
             "生成本集 episode_function 功能卡（JSON 输出）。\n"
-            "本集必须把当前 episode contract 的硬约束映射到功能卡字段；禁止用抽象推进替代关键代价/转折/可拍事件。\n\n"
+            "本集必须把当前 episode contract 的硬约束做“功能映射”（而不是复述合同原文）；禁止用抽象推进替代关键代价/转折/可拍事件。\n"
+            "并且必须填写以下 6 个合同映射字段（每个字段都要解释 mapping 如何落实到本集）：\n"
+            "- contract_key_turn_mapping：key_turn 如何在本集功能卡中被兑现\n"
+            "- contract_price_paid_mapping：price_paid 如何映射到本集代价与持久变化\n"
+            "- contract_visual_event_mapping：visual_or_public_event 如何映射到本集 viewer_payoff_design/节拍目标\n"
+            "- contract_cannot_remove_support：必须引用 must_advance/must_payoff/must_set_up/status_shift 中至少一项，说明“删掉会坏什么”\n"
+            "- contract_risk_if_softened：若写薄会损失什么（主线推进/关系位移/回收/世界推进/下一集钩子，至少一类）\n"
+            "- contract_tension_or_missing_density：若 dense contract 字段存在空洞/冲突/低密度，请显式指出张力点，不能自动脑补抹平。\n\n"
             f"current_episode_contract=\n{json.dumps(contract_focus, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
