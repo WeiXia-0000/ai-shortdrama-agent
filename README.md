@@ -266,6 +266,11 @@ flowchart LR
 
 1. 市场调研 → 2. 三个系列概念 → 3. 概念评审 → 4. 整季主线 → 5. 人物成长 → 6. 世界揭示节奏 → 7. 人物线/世界线耦合 → 8. 系列骨架 → 9. 承重锚点 → 10. 展开分集大纲 → 11. **大纲评审**（未过则带 `must_fix` 重写）→ 12. 角色圣经
 
+> **Outline 主链升级（Dense Episode Contract）**
+> - `01_series_outline.json` 中的 `episode_list` 从“几句话摘要”升级为**可约束后续单集扩写的剧情合同（dense episode contract）**，关键字段包含 `episode_engine_type`、`key_turn`、`must_advance/must_payoff/must_set_up`、`cannot_remove_because` 等。
+> - `anchor_beats` 也增强为更可展开的承重点（镜头可见事件、权力/资源转移、可回收回收落点、为何高记忆）。
+> - `outline_review_agent` 从宏观评审升级为**密度稽查器**：对 `key_turn` / `cannot_remove_because` / `status_shift`、`price_paid` 等逐集密度与可执行性给硬失败与 `rewrite_brief`。
+
 **大纲评审默认阈值**
 
 - `quality`：最低分 **8**，最多 **3** 轮重写  

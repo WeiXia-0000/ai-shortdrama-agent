@@ -872,7 +872,8 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
 
     # 11) 展开为 series_outline（分集），并用 outline_review_agent 做评分复审
     outline_prompt_base = (
-        "将 series_spine + anchor_beats 展开为 series_outline（与现有 JSON 兼容）。\n\n"
+        "将 series_spine + anchor_beats 展开为 series_outline。\n"
+        "升级要求：episode_list 必须输出 dense episode contract（剧情合同），字段需能约束后续单集扩写，不能只给几句话薄 outline。\n\n"
         f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
         f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n\n"
         f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
@@ -897,8 +898,9 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         )
 
         review_prompt_base = (
-            "你是短剧内容总审片人。请评审下列 series_outline 的市场与题材质量并打分。\n"
-            "评估重点：题材匹配（若有 genre_rules）、故事吸引力、当前市场适配、关键转折是否恰当、节奏是否仓促、篇幅是否足以支撑完整短剧。\n\n"
+            "你是短剧内容密度稽查器。请评审下列 series_outline 的市场与题材质量并打分。\n"
+            "评估重点：题材匹配（若有 genre_rules）、故事吸引力、关键转折是否恰当、节奏是否仓促、篇幅是否足以支撑完整短剧。\n"
+            "更重要：逐集检查 episode_list 的 dense contract 字段是否足以约束后续扩写，并按 hard-fail 规则给出 hard_fail_reasons 与可执行 rewrite_brief。\n\n"
             f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
             f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n\n"
             f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
@@ -1226,10 +1228,81 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
         ep_row = _episode_outline_row(series_outline, ep_id)
 
         # 0) episode_function：本集在整季中的功能卡（先于 plot）
+        anchor_ids_contract = (
+            ep_row.get("anchor_ids")
+            if isinstance(ep_row.get("anchor_ids"), list)
+            else []
+        )
+        contract_focus = {
+            "episode_id": ep_id,
+            "title": str(ep_row.get("title") or ""),
+            "one_line": str(ep_row.get("one_line") or ""),
+            "episode_engine_type": str(ep_row.get("episode_engine_type") or ""),
+            "episode_goal_in_series": str(ep_row.get("episode_goal_in_series") or ""),
+            "anchor_ids": anchor_ids_contract,
+            "must_advance": (
+                ep_row.get("must_advance") if isinstance(ep_row.get("must_advance"), list) else []
+            ),
+            "must_payoff": (
+                ep_row.get("must_payoff") if isinstance(ep_row.get("must_payoff"), list) else []
+            ),
+            "must_set_up": (
+                ep_row.get("must_set_up") if isinstance(ep_row.get("must_set_up"), list) else []
+            ),
+            "dominant_opposition": str(ep_row.get("dominant_opposition") or ""),
+            "pressure_arena": str(ep_row.get("pressure_arena") or ""),
+            "key_turn": str(ep_row.get("key_turn") or ""),
+            "status_shift": str(ep_row.get("status_shift") or ""),
+            "price_paid": str(ep_row.get("price_paid") or ""),
+            "relationship_shift": str(ep_row.get("relationship_shift") or ""),
+            "resource_shift": str(ep_row.get("resource_shift") or ""),
+            "world_reveal_delta": str(ep_row.get("world_reveal_delta") or ""),
+            "visual_or_public_event": str(ep_row.get("visual_or_public_event") or ""),
+            "cannot_remove_because": str(ep_row.get("cannot_remove_because") or ""),
+            "hook": str(ep_row.get("hook") or ""),
+            "cliffhanger": str(ep_row.get("cliffhanger") or ""),
+        }
+
+        plot_contract_focus = {
+            "episode_engine_type": contract_focus.get("episode_engine_type"),
+            "dominant_opposition": contract_focus.get("dominant_opposition"),
+            "pressure_arena": contract_focus.get("pressure_arena"),
+            "key_turn": contract_focus.get("key_turn"),
+            "status_shift": contract_focus.get("status_shift"),
+            "price_paid": contract_focus.get("price_paid"),
+            "relationship_shift": contract_focus.get("relationship_shift"),
+            "resource_shift": contract_focus.get("resource_shift"),
+            "world_reveal_delta": contract_focus.get("world_reveal_delta"),
+            "visual_or_public_event": contract_focus.get("visual_or_public_event"),
+            "cannot_remove_because": contract_focus.get("cannot_remove_because"),
+            "hook": contract_focus.get("hook"),
+            "cliffhanger": contract_focus.get("cliffhanger"),
+        }
+
+        script_contract_focus = {
+            "episode_engine_type": contract_focus.get("episode_engine_type"),
+            "pressure_arena": contract_focus.get("pressure_arena"),
+            "key_turn": contract_focus.get("key_turn"),
+            "price_paid": contract_focus.get("price_paid"),
+            "visual_or_public_event": contract_focus.get("visual_or_public_event"),
+            "cannot_remove_because": contract_focus.get("cannot_remove_because"),
+            "hook": contract_focus.get("hook"),
+            "cliffhanger": contract_focus.get("cliffhanger"),
+        }
+
+        storyboard_contract_focus = {
+            "pressure_arena": contract_focus.get("pressure_arena"),
+            "key_turn": contract_focus.get("key_turn"),
+            "visual_or_public_event": contract_focus.get("visual_or_public_event"),
+            "cannot_remove_because": contract_focus.get("cannot_remove_because"),
+            "hook": contract_focus.get("hook"),
+            "cliffhanger": contract_focus.get("cliffhanger"),
+        }
+
         function_prompt_base = (
             "生成本集 episode_function 功能卡（JSON 输出）。\n"
-            "输入包含：本集在大纲中的条目、完整 series_outline、series_memory、anchor_beats（可为空）。\n\n"
-            f"current_episode_outline_row=\n{json.dumps(ep_row, ensure_ascii=False)}\n\n"
+            "本集必须把当前 episode contract 的硬约束映射到功能卡字段；禁止用抽象推进替代关键代价/转折/可拍事件。\n\n"
+            f"current_episode_contract=\n{json.dumps(contract_focus, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
             f"anchor_beats=\n{json.dumps(anchor_beats, ensure_ascii=False)}\n\n"
@@ -1257,10 +1330,12 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
 
         plot_prompt_base = (
             "生成本集 plot（JSON 输出，字段须含 rule_execution_map 数组；若【题材能力开关】requires_rule_execution_map=false 则允许为空数组，禁止硬造规则）。\n"
-            "须落实 episode_function.viewer_payoff_design 与 must_advance/must_inherit。\n\n"
+            "须落实 episode_function.viewer_payoff_design 与 must_advance/must_inherit。\n"
+            "并把 episode contract 里的 key_turn / visual_or_public_event / price_paid/cannot_remove_because 落回到 acts 节拍中的“可拍事件位移”，避免只有发现/调查类内容。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
+            f"episode_contract_focus（密度硬约束）=\n{json.dumps(plot_contract_focus, ensure_ascii=False)}\n\n"
             f"episode_id={ep_id}\n"
         )
 
@@ -1269,6 +1344,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "须落实 viewer_payoff_design；plot.rule_execution_map 仅当 requires_rule_execution_map=true 或非空时强制对齐。\n"
             "输入包含：episode_function、series_outline、character_bible、series_memory、plot。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
+            f"episode_contract_focus（用于写作密度锚点）=\n{json.dumps(script_contract_focus, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"character_bible=\n{json.dumps(character_bible, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
@@ -1280,6 +1356,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "须落实 viewer_payoff_design 与 script；若 plot.rule_execution_map 非空则画面须对齐其触发与反馈。\n"
             "输入包含：episode_function、plot、series_outline、character_bible、series_memory、script。\n\n"
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
+            f"episode_contract_focus（用于镜头记忆点）=\n{json.dumps(storyboard_contract_focus, ensure_ascii=False)}\n\n"
             f"plot=\n{json.dumps({}, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"character_bible=\n{json.dumps(character_bible, ensure_ascii=False)}\n\n"
