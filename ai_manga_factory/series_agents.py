@@ -236,6 +236,28 @@ outline_review_agent = Agent(
     ),
 )
 
+
+dense_outline_warning_judge_agent = Agent(
+    name="dense_outline_warning_judge_agent",
+    model=MODEL,
+    description="基于 outline_validator 的程序性预警信号进行二次裁决：判定启发式风险是否为真实问题，并给出分层回退/重写动作。",
+    instruction=_json_only_instruction(
+        schema_hint='{\n  "overall_verdict": "pass|rewrite_outline_only|rewrite_anchors_then_outline|rewrite_spine_then_anchors_then_outline|needs_human_review",\n  "can_forward_to_next_stage": bool,\n  "why": str,\n  "warning_assessment": [\n    {\n      "risk_type": "low_event_density|late_stage_drift|engine_repetition|other",\n      "episode_range": str,\n      "validator_signal": str,\n      "judge_verdict": "real_problem|acceptable_transition|borderline",\n      "reason": str,\n      "short_drama_standard_applied": [str]\n    }\n  ],\n  "root_cause_layer": {\n    "outline_only": [str],\n    "anchor_layer": [str],\n    "spine_layer": [str]\n  },\n  "must_fix_now": [str],\n  "allow_with_watchlist": [str],\n  "rewrite_brief": {\n    "rewrite_level": "outline_only|anchors_then_outline|spine_then_anchors_then_outline|none",\n    "must_keep": [str],\n    "must_change": [str],\n    "episode_level_actions": [str],\n    "anchor_level_actions": [str],\n    "spine_level_actions": [str]\n  },\n  "downstream_guardrails_if_pass": {\n    "watch_episode_ranges": [str],\n    "must_not_dilute": [str],\n    "must_land_visibly": [str]\n  }\n}\n',
+        constraints=[
+            "只输出一个 JSON 对象。",
+            "必须严格遵守 schema_hint，字段类型匹配（布尔/数组/对象）。",
+            "tone 必须像“短剧总审片人”：偏好可拍事件兑现、代价/转折可感、关系/资源/名分推进，而不是技术 QC 或文学评论。",
+            "必须区分问题来源：root_cause_layer 里把真实原因归到 outline_only / anchor_layer / spine_layer（不得只写所有都可能）。",
+            "low_event_density 不等于出现“发现/决定/调查/意识到”。真正判断标准是：缺少可见事件位移、缺少关系/资源/地位/安全条件的变化、缺少关键转折、缺少代价、缺少让下一集必须发生的条件。",
+            "late_stage_drift 不等于世界观扩大。真正标准是：后段是否仍围绕人物/组织/关系/资源/名分/规则对抗推进；如果抽象秩序/文明/维度说明占主导且冲突对抗词明显偏少，则判为漂移问题。",
+            "engine_repetition 需要结合短剧节奏标准判断：重复是否造成“爽点枯萎/转折空转/代价回收不足”，若只是风格一致但剧情仍有新代价与新转折，可归为 acceptable_transition。",
+            "必须对每条 warning_assessment 给出 judge_verdict：real_problem / acceptable_transition / borderline，并解释为什么。",
+            "rewrite_brief.rewrite_level 必须与 overall_verdict 对齐（none 只在 can_forward_to_next_stage=true 时使用）。",
+            "若 overall_verdict=needs_human_review：why 必须说明是何种信息缺口/矛盾需要人工介入，且不能建议静默继续。",
+        ],
+    ),
+)
+
 character_bible_agent = Agent(
     name="character_bible_agent_series",
     model=MODEL,

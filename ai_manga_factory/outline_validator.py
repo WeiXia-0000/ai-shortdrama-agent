@@ -231,7 +231,8 @@ def _find_missing_runs(episodes: List[Dict[str, Any]], field: str, min_run_len: 
 
 def validate_dense_outline(series_outline: Dict[str, Any]) -> Dict[str, Any]:
     """
-    程序性校验 dense episode contract 的最低质量。
+    程序性“预警器”校验 dense episode contract 的最低质量。
+    该 validator 只做确定性硬校验 + 启发式风险信号，不做最终剧情裁判。
     不调用 LLM，不依赖 embedding/ML。
     """
     if not isinstance(series_outline, dict):
@@ -420,6 +421,9 @@ def validate_dense_outline(series_outline: Dict[str, Any]) -> Dict[str, Any]:
     # late-stage drift risk
     late_stage_drift_flag = False
     late_stage_drift_notes: List[str] = []
+    tail_abstract_avg: float = 0.0
+    tail_person_avg: float = 0.0
+    late_tail_episode_range: List[str] = []
     if episode_count >= 8:  # 小样本不做强判断
         start = int(episode_count * 0.75)
         tail = episodes_sorted[start:]
@@ -432,6 +436,10 @@ def validate_dense_outline(series_outline: Dict[str, Any]) -> Dict[str, Any]:
         tail_len = max(1, len(tail))
         tail_abstract_avg = sum(tail_abstract_avgs) / tail_len
         tail_person_avg = sum(tail_person_avgs) / tail_len
+        if tail:
+            a = tail[0].get("episode_id", 0)
+            b = tail[-1].get("episode_id", episode_count - 1)
+            late_tail_episode_range = [f"{a}-{b}"]
         # 注意：人物/组织词常会在 visual/world_reveal 等字段里“顺带出现”，
         # 因此不能只用 person_org_avg 低作为唯一判据；需要同时看 abstract 是否显著压过人物对抗词。
         if tail_abstract_avg >= 1.3 and (
@@ -448,12 +456,172 @@ def validate_dense_outline(series_outline: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 warnings.append("late_stage_drift_risk：可能后段风格抽象化/世界观说明化")
 
+    # ------------------------------
+    # dense_outline 预警器增强（向后兼容：不删旧字段，仅加字段）
+    # ------------------------------
+    # strong_warnings / soft_signals / risk_flags / review_targets 会供下一层 warning judge agent 复核。
+    strong_warnings: List[str] = []
+    soft_signals: List[str] = []
+    review_targets: List[Dict[str, str]] = []
+
+    # 解析“长段变薄”提示
+    no_low_event_hard_fail = not any("抽象事件词密度过高" in x for x in hard_fail_reasons)
+    no_late_drift_hard_fail = not any("后四分之一漂移风险过高" in x for x in hard_fail_reasons)
+    no_engine_repetition_hard_fail = not any("6 连窗" in x for x in hard_fail_reasons)
+
+    # soft_signals（统计信号）
+    soft_signals.append(f"abstract_avg={abstract_avg:.2f}")
+    soft_signals.append(f"concrete_avg={concrete_avg:.2f}")
+    soft_signals.append(f"engine_repetition_mode={engine_repetition_mode}")
+    soft_signals.append(f"must_payoff_missing_count={must_payoff_missing_count}")
+    soft_signals.append(f"must_set_up_missing_count={must_set_up_missing_count}")
+    soft_signals.append(
+        f"light_shift_triplet_empty_ratio={light_shift_triplet_empty_ratio:.2f}"
+    )
+    if episode_count >= 8:
+        soft_signals.append(f"tail_abstract_avg={tail_abstract_avg:.2f}")
+        soft_signals.append(f"tail_person_avg={tail_person_avg:.2f}")
+
+    # review_targets（可定位的复核区间）
+    # 连续缺失（可直接使用现有 runs 字符串）
+    for r in missing_key_turn_runs:
+        review_targets.append(
+            {"episode_range": r, "risk_type": "other", "reason": "连续 key_turn 为空（密度锚点缺失）"}
+        )
+    for r in missing_status_shift_runs:
+        review_targets.append(
+            {"episode_range": r, "risk_type": "other", "reason": "连续 status_shift 为空（状态位移锚点缺失）"}
+        )
+    for r in missing_price_paid_runs:
+        review_targets.append(
+            {"episode_range": r, "risk_type": "other", "reason": "连续 price_paid 为空（代价承接锚点缺失）"}
+        )
+
+    # engine repetition（从现有 flags 反推窗口）
+    def _extract_bracket_range(s: str) -> str:
+        m = re.search(r"\[(\d+)-(\d+)\]", s)
+        return f"{m.group(1)}-{m.group(2)}" if m else s
+
+    if engine_repetition_flags:
+        for f in engine_repetition_flags:
+            review_targets.append(
+                {
+                    "episode_range": _extract_bracket_range(f),
+                    "risk_type": "engine_repetition",
+                    "reason": f"同一 engine_type 连续重复（validator 窗口命中：{f}）",
+                }
+            )
+
+    # low_event_density：用 concrete=0 的集数做近似区间（可定位，避免“只讲抽象”）
+    low_event_density_episode_ranges: List[str] = []
+    try:
+        zero_concrete_indices = [i for i, c in enumerate(concrete_hits_per_ep) if c == 0]
+        if zero_concrete_indices:
+            runs: List[Tuple[int, int]] = []
+            run_start = zero_concrete_indices[0]
+            prev = zero_concrete_indices[0]
+            for idx in zero_concrete_indices[1:]:
+                if idx == prev + 1:
+                    prev = idx
+                    continue
+                runs.append((run_start, prev))
+                run_start = idx
+                prev = idx
+            runs.append((run_start, prev))
+            for a_idx, b_idx in runs:
+                a_eid = episodes_sorted[a_idx].get("episode_id", a_idx)
+                b_eid = episodes_sorted[b_idx].get("episode_id", b_idx)
+                low_event_density_episode_ranges.append(f"{a_eid}-{b_eid}")
+    except Exception:
+        # 兜底：不让预警器因异常字段而崩
+        low_event_density_episode_ranges = []
+
+    if low_event_density_notes:
+        for n in low_event_density_notes[:2]:
+            reason = f"{n}（抽象密度偏高/具体动作偏少）"
+            review_targets.append(
+                {
+                    "episode_range": (", ".join(low_event_density_episode_ranges[:2])) or "unknown",
+                    "risk_type": "low_event_density",
+                    "reason": reason,
+                }
+            )
+
+    # late_stage_drift：至少给尾段 25%
+    if late_stage_drift_flag:
+        review_targets.append(
+            {
+                "episode_range": ",".join(late_tail_episode_range) if late_tail_episode_range else "last_25pct",
+                "risk_type": "late_stage_drift",
+                "reason": f"后四分之一漂移风险（validator: {late_stage_drift_notes[:1] or ['flag=true']}）",
+            }
+        )
+
+    # risk_flags（必须由现有逻辑映射而来）
+    def _risk_bucket(flag: bool, hard_fail: bool) -> Tuple[str, float]:
+        if not flag:
+            return ("low", 0.0)
+        # 若命中 hard fail，直接更高风险等级；否则为中等风险（启发式需要 judge 二次裁决）
+        if hard_fail:
+            return ("high", 0.9)
+        return ("medium", 0.6)
+
+    low_event_hard_fail = any("抽象事件词密度过高" in x for x in hard_fail_reasons)
+    late_drift_hard_fail = any("后四分之一漂移风险过高" in x for x in hard_fail_reasons)
+    engine_repetition_hard_fail = any("6 连窗" in x for x in hard_fail_reasons)
+
+    low_level, low_score = _risk_bucket(low_event_density_flag, low_event_hard_fail)
+    late_level, late_score = _risk_bucket(late_stage_drift_flag, late_drift_hard_fail)
+    engine_level, engine_score = _risk_bucket(
+        len(engine_repetition_flags) > 0, engine_repetition_hard_fail
+    )
+
+    risk_flags: Dict[str, Any] = {
+        "low_event_density": {
+            "flag": bool(low_event_density_flag),
+            "risk_level": low_level,
+            "score": float(low_score),
+            "notes": low_event_density_notes[:3],
+            "episode_ranges": low_event_density_episode_ranges[:3],
+        },
+        "late_stage_drift": {
+            "flag": bool(late_stage_drift_flag),
+            "risk_level": late_level,
+            "score": float(late_score),
+            "notes": late_stage_drift_notes[:3],
+            "episode_ranges": late_tail_episode_range[:3],
+        },
+        "engine_repetition": {
+            "flag": len(engine_repetition_flags) > 0,
+            "risk_level": engine_level,
+            "score": float(engine_score),
+            "notes": engine_repetition_flags[:3],
+            "episode_ranges": [_extract_bracket_range(x) for x in engine_repetition_flags[:3]],
+        },
+    }
+
+    # strong_warnings：高风险但启发式（供 judge agent 二次裁决）
+    if low_event_density_flag and no_low_event_hard_fail:
+        strong_warnings.extend(low_event_density_notes[:2] or ["low_event_density_flag=true"])
+    if late_stage_drift_flag and no_late_drift_hard_fail:
+        strong_warnings.extend(late_stage_drift_notes[:2] or ["late_stage_drift_flag=true"])
+    if engine_repetition_flags and no_engine_repetition_hard_fail:
+        strong_warnings.append("engine_repetition_flags 命中但未达到 engine hard fail 阈值（需二次裁决）")
+    if len(episodes_sorted) >= 8 and light_shift_triplet_empty_ratio >= 0.60:
+        strong_warnings.append(
+            "relationship/resource/world_reveal_delta 在全剧占比长期偏空（可能整体变薄，启发式强信号）"
+        )
+
     is_pass = len(hard_fail_reasons) == 0
 
     return {
         "is_pass": is_pass,
         "hard_fail_reasons": hard_fail_reasons,
         "warnings": warnings,
+        "strong_warnings": strong_warnings,
+        "soft_signals": soft_signals,
+        "risk_flags": risk_flags,
+        "review_targets": review_targets,
         "stats": {
             "episode_count": episode_count,
             "missing_required_field_counts": missing_required_field_counts,

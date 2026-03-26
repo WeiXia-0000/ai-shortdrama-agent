@@ -51,6 +51,16 @@ class TestOutlineValidator(unittest.TestCase):
         r = validate_dense_outline(series_outline)
         self.assertTrue(r["is_pass"])
         self.assertEqual(r["hard_fail_reasons"], [])
+        # 向后兼容升级：仍保留旧骨架，同时新增 warning judge gate 字段
+        for k in ("strong_warnings", "soft_signals", "risk_flags", "review_targets"):
+            self.assertIn(k, r)
+        self.assertIsInstance(r["strong_warnings"], list)
+        self.assertIsInstance(r["soft_signals"], list)
+        self.assertIsInstance(r["risk_flags"], dict)
+        self.assertIsInstance(r["review_targets"], list)
+        self.assertIn("low_event_density", r["risk_flags"])
+        self.assertIn("late_stage_drift", r["risk_flags"])
+        self.assertIn("engine_repetition", r["risk_flags"])
 
     def test_consecutive_missing_key_turn_fail(self) -> None:
         eps = []
@@ -99,6 +109,8 @@ class TestOutlineValidator(unittest.TestCase):
         r = validate_dense_outline({"episode_list": eps})
         # 这里只要求 flag/warn，具体 hard/fail 取决阈值
         self.assertTrue(r["stats"]["late_stage_drift_flag"])
+        self.assertIn("late_stage_drift", r["risk_flags"])
+        self.assertTrue(r["risk_flags"]["late_stage_drift"]["flag"])
 
     def test_low_event_density_flag_or_fail(self) -> None:
         abs_words = "发现 决定 调查 深入了解 意识到 开始怀疑 接近真相"
@@ -115,6 +127,92 @@ class TestOutlineValidator(unittest.TestCase):
             )
         r = validate_dense_outline({"episode_list": eps})
         self.assertTrue(r["stats"]["low_event_density_flag"])
+        self.assertIn("low_event_density", r["risk_flags"])
+        self.assertTrue(r["risk_flags"]["low_event_density"]["flag"])
+
+
+class TestDenseOutlineWarningJudgeGate(unittest.TestCase):
+    def test_hard_fail_should_not_trigger_judge(self) -> None:
+        from ai_manga_factory.run_series import _dense_outline_warning_judge_needed
+
+        dense_validation = {
+            "hard_fail_reasons": ["x"],
+            "strong_warnings": ["y"],
+            "risk_flags": {
+                "low_event_density": {"flag": True},
+                "late_stage_drift": {"flag": False},
+                "engine_repetition": {"flag": False},
+            },
+            "review_targets": [{"episode_range": "1-2", "risk_type": "other", "reason": "r"}],
+        }
+        self.assertFalse(_dense_outline_warning_judge_needed(dense_validation))
+
+    def test_strong_warnings_triggers_judge(self) -> None:
+        from ai_manga_factory.run_series import _dense_outline_warning_judge_needed
+
+        dense_validation = {
+            "hard_fail_reasons": [],
+            "strong_warnings": ["low_event_density_flag=true 但未硬 fail"],
+            "risk_flags": {
+                "low_event_density": {"flag": False},
+                "late_stage_drift": {"flag": False},
+                "engine_repetition": {"flag": False},
+            },
+            "review_targets": [],
+        }
+        self.assertTrue(_dense_outline_warning_judge_needed(dense_validation))
+
+    def test_risk_flag_triggers_judge(self) -> None:
+        from ai_manga_factory.run_series import _dense_outline_warning_judge_needed
+
+        dense_validation = {
+            "hard_fail_reasons": [],
+            "strong_warnings": [],
+            "risk_flags": {
+                "low_event_density": {"flag": True},
+                "late_stage_drift": {"flag": False},
+                "engine_repetition": {"flag": False},
+            },
+            "review_targets": [],
+        }
+        self.assertTrue(_dense_outline_warning_judge_needed(dense_validation))
+
+    def test_review_targets_triggers_judge(self) -> None:
+        from ai_manga_factory.run_series import _dense_outline_warning_judge_needed
+
+        dense_validation = {
+            "hard_fail_reasons": [],
+            "strong_warnings": [],
+            "risk_flags": {
+                "low_event_density": {"flag": False},
+                "late_stage_drift": {"flag": False},
+                "engine_repetition": {"flag": False},
+            },
+            "review_targets": [{"episode_range": "7-8", "risk_type": "late_stage_drift", "reason": "r"}],
+        }
+        self.assertTrue(_dense_outline_warning_judge_needed(dense_validation))
+
+    def test_judge_action_mapping(self) -> None:
+        from ai_manga_factory.run_series import _dense_outline_judge_action
+
+        self.assertEqual(
+            _dense_outline_judge_action({"overall_verdict": "rewrite_outline_only"}), "rewrite_outline_only"
+        )
+        self.assertEqual(
+            _dense_outline_judge_action({"overall_verdict": "rewrite_anchors_then_outline"}), "rewrite_anchors_then_outline"
+        )
+        self.assertEqual(
+            _dense_outline_judge_action({"overall_verdict": "rewrite_spine_then_anchors_then_outline"}), "rewrite_spine_then_anchors_then_outline"
+        )
+        self.assertEqual(
+            _dense_outline_judge_action({"overall_verdict": "needs_human_review"}), "needs_human_review"
+        )
+        self.assertEqual(_dense_outline_judge_action({"can_forward_to_next_stage": True}), "pass")
+
+        self.assertEqual(
+            _dense_outline_judge_action({"rewrite_brief": {"rewrite_level": "anchors_then_outline"}}),
+            "rewrite_anchors_then_outline",
+        )
 
 
 class TestEpisodeDirLogic(unittest.TestCase):
@@ -171,4 +269,14 @@ class TestEpisodeFunctionQC(unittest.TestCase):
         series_path = Path(__file__).resolve().parent.parent / "ai_manga_factory" / "run_series.py"
         txt = series_path.read_text(encoding="utf-8")
         self.assertIn("contract_tension_or_missing_density", txt)
+        # 额外静态检查：current_episode_contract 与 contract_*_mapping 仍在 function prompt 注入链中
+        for k in (
+            "current_episode_contract=",
+            "contract_key_turn_mapping",
+            "contract_price_paid_mapping",
+            "contract_visual_event_mapping",
+            "contract_cannot_remove_support",
+            "contract_risk_if_softened",
+        ):
+            self.assertIn(k, txt)
 

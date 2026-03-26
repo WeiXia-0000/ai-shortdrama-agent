@@ -917,6 +917,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     max_outline_rounds = 3 if args.quality_mode == "quality" else 2
     outline_out: Dict[str, Any] = {}
     outline_review_out: Dict[str, Any] = {}
+    dense_outline_warning_judge_final_out: Optional[Dict[str, Any]] = None
 
     for oi in range(1, max_outline_rounds + 1):
         outline_session_id = f"series_setup_outline_expander_r{oi}"
@@ -957,10 +958,186 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         )
 
         score = int(outline_review_out.get("overall_score_1to10") or 0)
-        hard_fails = list(outline_review_out.get("hard_fail_reasons") or [])
-        hard_fails.extend(dense_validation.get("hard_fail_reasons") or [])
+        outline_hard_fails = list(outline_review_out.get("hard_fail_reasons") or [])
+        dense_hard_fails = list(dense_validation.get("hard_fail_reasons") or [])
+        hard_fails = outline_hard_fails + dense_hard_fails
+
+        # 4) 若无 dense hard fail 但有强启发式风险，则触发 warning judge 二次裁决
+        dense_should_judge = _dense_outline_warning_judge_needed(dense_validation)
+
+        if not hard_fails and dense_should_judge:
+            judge_prompt_base = (
+                "你是 dense outline 的二次预警裁决者（warning judge），不是最终剧情裁判。\n"
+                "你的任务：根据 outline_validator 的 strong_warnings / risk_flags / review_targets，\n"
+                "判断这些启发式风险是否为真实问题，并决定如何回退层级/重写。\n\n"
+                f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
+                f"season_mainline=\n{json.dumps(season_mainline_out, ensure_ascii=False)}\n\n"
+                f"character_growth=\n{json.dumps(character_growth_out, ensure_ascii=False)}\n\n"
+                f"world_reveal_pacing=\n{json.dumps(world_reveal_out, ensure_ascii=False)}\n\n"
+                f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n\n"
+                f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n\n"
+                f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
+                f"series_outline(dense)=\n{json.dumps(outline_out, ensure_ascii=False)}\n\n"
+                f"outline_review=\n{json.dumps(outline_review_out, ensure_ascii=False)}\n\n"
+                f"validator_output(升级版)=\n{json.dumps(dense_validation, ensure_ascii=False)}\n\n"
+                f"genre_bundle=\n{json.dumps(concept_bundle, ensure_ascii=False)}\n\n"
+            )
+            judge_prompt = _inject_genre_prompt_for_stage(
+                concept_bundle, judge_prompt_base, "dense_outline_warning_judge"
+            )
+            judge_out = await _run_agent_json(
+                series_agents.dense_outline_warning_judge_agent,
+                judge_prompt,
+                session_service=session_service,
+                user_id=user_id,
+                session_id=f"series_setup_dense_outline_warning_judge_r{oi}",
+                debug_dir=debug_dir,
+            )
+            _dump_json(
+                debug_dir / f"dense_outline_warning_judge_r{oi}.json",
+                judge_out,
+            )
+
+            action = _dense_outline_judge_action(judge_out)
+            dense_outline_warning_judge_final_out = judge_out
+            root_cause_layer = judge_out.get("root_cause_layer")
+            top_rewrite_level = None
+            if isinstance(judge_out.get("rewrite_brief"), dict):
+                top_rewrite_level = judge_out.get("rewrite_brief", {}).get("rewrite_level")
+            print(
+                f"[dense-outline-warning-judge] r{oi} verdict={judge_out.get('overall_verdict')} action={action} "
+                f"root_cause={root_cause_layer} top_rewrite={top_rewrite_level} "
+                f"can_forward={judge_out.get('can_forward_to_next_stage')}"
+            )
+
+            # judge 返回 pass -> forward
+            if action == "pass" and bool(judge_out.get("can_forward_to_next_stage")) and score >= min_outline_score:
+                break
+
+            # judge 返回 needs_human_review -> 明确停在该阶段
+            if action == "needs_human_review":
+                raise RuntimeError(
+                    "[dense-outline-warning-judge] needs_human_review：请人工介入后再继续生成。"
+                )
+
+            # judge 返回 rewrite -> 按层级回退后继续下一轮 outline
+            if oi >= max_outline_rounds:
+                raise RuntimeError(
+                    f"[dense-outline-warning-judge] verdict={action} 但已到最大轮次（{max_outline_rounds}），停止以避免静默继续。"
+                )
+
+            rb = judge_out.get("rewrite_brief") or {}
+            must_fix_now = judge_out.get("must_fix_now") or []
+            anchor_level_actions = rb.get("anchor_level_actions") or []
+            spine_level_actions = rb.get("spine_level_actions") or []
+            episode_level_actions = rb.get("episode_level_actions") or []
+
+            must_fix_text = "\n".join([f"- {x}" for x in must_fix_now if x])
+            judge_extra = (
+                "\n【dense_outline_warning_judge_agent】\n"
+                f"why={judge_out.get('why')}\n"
+                + (f"must_fix_now:\n{must_fix_text}\n" if must_fix_text else "")
+                + f"rewrite_brief={json.dumps(rb, ensure_ascii=False)}\n"
+            )
+
+            if action == "rewrite_outline_only":
+                outline_prompt = _inject_genre_prompt_for_stage(
+                    concept_bundle, outline_prompt_base + judge_extra, "episode_outline_expander"
+                )
+                continue
+
+            if action == "rewrite_anchors_then_outline":
+                anchors_prompt_base = (
+                    "基于 series_spine 输出 anchor_beats（数量不固定，优先人物成长承重）。\n\n"
+                    f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n"
+                )
+                if anchor_level_actions:
+                    anchors_prompt_base += "\n【anchor_level_actions】\n" + "\n".join(
+                        [f"- {x}" for x in anchor_level_actions if x]
+                    )
+                anchors_prompt = _inject_genre_prompt_for_stage(
+                    concept_bundle, anchors_prompt_base, "anchor_beats"
+                )
+                anchor_beats_out = await _run_agent_json(
+                    series_agents.anchor_beats_agent,
+                    anchors_prompt,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"series_setup_anchor_beats_from_warning_judge_r{oi}",
+                    debug_dir=debug_dir,
+                )
+                outline_prompt_base = (
+                    "将 series_spine + anchor_beats 展开为 series_outline。\n"
+                    "升级要求：episode_list 必须输出 dense episode contract（剧情合同），字段需能约束后续单集扩写，不能只给几句话薄 outline。\n\n"
+                    f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
+                    f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n\n"
+                    f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
+                    f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
+                )
+                outline_prompt = _inject_genre_prompt_for_stage(
+                    concept_bundle, outline_prompt_base + judge_extra, "episode_outline_expander"
+                )
+                continue
+
+            if action == "rewrite_spine_then_anchors_then_outline":
+                spine_prompt_base = (
+                    "基于主线+人物成长+世界揭示+耦合图，生成 series_spine（禁止写分集细节）。\n\n"
+                    f"season_mainline=\n{json.dumps(season_mainline_out, ensure_ascii=False)}\n\n"
+                    f"character_growth=\n{json.dumps(character_growth_out, ensure_ascii=False)}\n\n"
+                    f"world_reveal_pacing=\n{json.dumps(world_reveal_out, ensure_ascii=False)}\n\n"
+                    f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
+                )
+                if spine_level_actions:
+                    spine_prompt_base += "\n【spine_level_actions】\n" + "\n".join(
+                        [f"- {x}" for x in spine_level_actions if x]
+                    )
+                spine_prompt = _inject_genre_prompt_for_stage(
+                    concept_bundle, spine_prompt_base, "series_spine"
+                )
+                series_spine_out = await _run_agent_json(
+                    series_agents.series_spine_agent,
+                    spine_prompt,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"series_setup_spine_from_warning_judge_r{oi}",
+                    debug_dir=debug_dir,
+                )
+                anchors_prompt_base = (
+                    "基于 series_spine 输出 anchor_beats（数量不固定，优先人物成长承重）。\n\n"
+                    f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n"
+                )
+                if anchor_level_actions:
+                    anchors_prompt_base += "\n【anchor_level_actions】\n" + "\n".join(
+                        [f"- {x}" for x in anchor_level_actions if x]
+                    )
+                anchors_prompt = _inject_genre_prompt_for_stage(
+                    concept_bundle, anchors_prompt_base, "anchor_beats"
+                )
+                anchor_beats_out = await _run_agent_json(
+                    series_agents.anchor_beats_agent,
+                    anchors_prompt,
+                    session_service=session_service,
+                    user_id=user_id,
+                    session_id=f"series_setup_anchor_beats_from_warning_judge_r{oi}",
+                    debug_dir=debug_dir,
+                )
+                outline_prompt_base = (
+                    "将 series_spine + anchor_beats 展开为 series_outline。\n"
+                    "升级要求：episode_list 必须输出 dense episode contract（剧情合同），字段需能约束后续单集扩写，不能只给几句话薄 outline。\n\n"
+                    f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
+                    f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n\n"
+                    f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
+                    f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
+                )
+                outline_prompt = _inject_genre_prompt_for_stage(
+                    concept_bundle, outline_prompt_base + judge_extra, "episode_outline_expander"
+                )
+                continue
+
+        # 无 hard fail：若 score 已达标则 forward；否则按旧逻辑 rewrite outline
         if score >= min_outline_score and not hard_fails:
             break
+
         if oi < max_outline_rounds:
             fix_text = "\n".join([f"- {x}" for x in (outline_review_out.get("must_fix") or [])])
             risk_text = "\n".join([f"- {x}" for x in (outline_review_out.get("risks") or [])])
@@ -984,6 +1161,12 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
             outline_prompt = _inject_genre_prompt_for_stage(
                 concept_bundle, outline_prompt, "episode_outline_expander"
             )
+
+    if dense_outline_warning_judge_final_out is not None:
+        _dump_json(
+            debug_dir / "dense_outline_warning_judge_final.json",
+            dense_outline_warning_judge_final_out,
+        )
 
     # 12) 角色设定（character_bible）
     cb_prompt_base = (
@@ -1099,6 +1282,64 @@ def _judge_retries(args: argparse.Namespace) -> int:
         return max(0, int(getattr(args, "judge_retries", 2)))
     except (TypeError, ValueError):
         return 2
+
+
+def _dense_outline_warning_judge_needed(dense_validation: Dict[str, Any]) -> bool:
+    """
+    validator 二次预警：是否需要 warning judge gate。
+    触发条件（与需求一致）：
+    - dense_validation 有 hard fail：不触发
+    - strong_warnings 非空
+    - risk_flags.low_event_density.flag=true
+    - risk_flags.late_stage_drift.flag=true
+    - risk_flags.engine_repetition.flag=true
+    - review_targets 非空
+    """
+    if not isinstance(dense_validation, dict):
+        return False
+    if dense_validation.get("hard_fail_reasons"):
+        return False
+    if dense_validation.get("strong_warnings"):
+        return True
+    risk_flags = dense_validation.get("risk_flags") or {}
+    if isinstance(risk_flags, dict):
+        low = (risk_flags.get("low_event_density") or {}).get("flag")
+        late = (risk_flags.get("late_stage_drift") or {}).get("flag")
+        engine = (risk_flags.get("engine_repetition") or {}).get("flag")
+        if bool(low) or bool(late) or bool(engine):
+            return True
+    if dense_validation.get("review_targets"):
+        return True
+    return False
+
+
+def _dense_outline_judge_action(judge_out: Dict[str, Any]) -> str:
+    """把 judge 输出归一化到固定动作集合（便于控制流与测试）。"""
+    if not isinstance(judge_out, dict):
+        return "needs_human_review"
+    ov = judge_out.get("overall_verdict")
+    if ov in {
+        "pass",
+        "rewrite_outline_only",
+        "rewrite_anchors_then_outline",
+        "rewrite_spine_then_anchors_then_outline",
+        "needs_human_review",
+    }:
+        return str(ov)
+    if bool(judge_out.get("can_forward_to_next_stage")):
+        return "pass"
+    rb = judge_out.get("rewrite_brief")
+    if isinstance(rb, dict):
+        rl = rb.get("rewrite_level")
+        mapping = {
+            "outline_only": "rewrite_outline_only",
+            "anchors_then_outline": "rewrite_anchors_then_outline",
+            "spine_then_anchors_then_outline": "rewrite_spine_then_anchors_then_outline",
+            "none": "needs_human_review",
+        }
+        if rl in mapping:
+            return mapping[rl]
+    return "needs_human_review"
 
 
 def _creative_scorecard_placeholder(reason: str) -> Dict[str, Any]:
