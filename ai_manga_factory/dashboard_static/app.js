@@ -34,7 +34,11 @@ function renderOverview(o, ov) {
     .join("");
   const cards = [
     ["系列", ov.display_title || "—"],
-    ["题材", ov.genre_key || "—"],
+    ["题材(兼容key)", ov.genre_key || "—"],
+    ["主题材", ov.primary_genre || ov.genre_key || "—"],
+    ["设定标签", (ov.setting_tags || []).join(" / ") || "—"],
+    ["引擎标签", (ov.engine_tags || []).join(" / ") || "—"],
+    ["关系标签", (ov.relationship_tags || []).join(" / ") || "—"],
     ["计划集数", ov.planned_episodes_from_outline ?? "—"],
     ["已扫描集目录", String(ov.episode_directories_scanned ?? 0)],
     ["Registry", ov.registry_file_exists ? "存在" : "缺失"],

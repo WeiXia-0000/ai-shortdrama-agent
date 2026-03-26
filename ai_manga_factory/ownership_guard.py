@@ -35,6 +35,7 @@ ALLOWED_PATH_KEYS_BY_OP: Dict[str, Set[str]] = {
     "query.gate_trend": set(),
     "query.promise_status": set(),
     "query.knowledge_fence": set(),
+    "query.genre_bundle": set(),
     "carry.apply_promise_overrides": {"production_carry_registry"},
     "gate.run_plot_gate": {"episodes_root"},
     "gate.run_package_gate": {"episodes_root"},

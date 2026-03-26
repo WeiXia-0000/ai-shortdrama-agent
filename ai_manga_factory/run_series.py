@@ -17,12 +17,15 @@ from google.genai import types
 
 from .creative_constants import _strict_json_only
 from .genre_rules import (
-    capabilities_to_prompt_block,
-    get_genre_capabilities,
-    infer_genre_context_for_prompt,
+    bundle_from_registry_series_identity,
+    compose_genre_injection_for_stage,
+    get_bundle_capabilities,
+    get_primary_genre_capabilities,
+    infer_genre_bundle_for_prompt,
+    summarize_genre_bundle_for_debug,
 )
 from . import series_agents
-from .carry_registry import ensure_registry_file, sync_carry_registry_minimal
+from .carry_registry import ensure_registry_file, load_registry, save_registry, sync_carry_registry_minimal
 
 
 APP_NAME = "ai_manga_factory"
@@ -201,7 +204,7 @@ def _validate_stage_output(
                         issues.append(f"viewer_payoff_design[{i}] 缺少或为空: {k}")
         return issues
     if stage == "plot":
-        caps = genre_caps if isinstance(genre_caps, dict) else get_genre_capabilities("general")
+        caps = genre_caps if isinstance(genre_caps, dict) else get_primary_genre_capabilities("general")
         req_map = bool(caps.get("requires_rule_execution_map", False))
         use_explicit = bool(caps.get("uses_explicit_rules", False))
         min_rules = 2 if (req_map and use_explicit) else (1 if req_map else 0)
@@ -324,12 +327,19 @@ def _parse_episode_ids(s: str) -> List[int]:
     return out
 
 
-def _maybe_inject_genre_rules(infer_text: str, base_prompt: str) -> str:
-    """注入题材规则包 + 能力开关 + 当前推断 genre_key（保持函数名兼容）。"""
-    genre_key, rules_block, caps = infer_genre_context_for_prompt(infer_text)
-    cap_block = capabilities_to_prompt_block(caps)
-    header = f"【当前推断题材 genre_key】{genre_key}\n\n"
-    return (header + rules_block + "\n" + cap_block + "\n" + base_prompt).strip()
+def _inject_genre_prompt_for_stage(
+    bundle: Dict[str, Any],
+    base_prompt: str,
+    stage_name: str,
+) -> str:
+    """按 stage 选择 genre profile，拼接在 base_prompt 之前。"""
+    block = compose_genre_injection_for_stage(bundle, stage_name, include_header=True)
+    return (block + "\n" + base_prompt).strip()
+
+
+def _inject_genre_prompt_from_infer(infer_text: str, base_prompt: str, stage_name: str) -> str:
+    bundle = infer_genre_bundle_for_prompt(infer_text)
+    return _inject_genre_prompt_for_stage(bundle, base_prompt, stage_name)
 
 
 def _episode_outline_row(series_outline: Dict[str, Any], ep_id: int) -> Dict[str, Any]:
@@ -637,7 +647,7 @@ async def _patch_character_bible_new_characters(
     series_outline: Dict[str, Any],
     script_out: Dict[str, Any],
     ep_id: int,
-    infer_text: str,
+    genre_bundle: Dict[str, Any],
     quality_mode: str,
     session_service: InMemorySessionService,
     user_id: str,
@@ -660,7 +670,7 @@ async def _patch_character_bible_new_characters(
         f"script_for_visual_cues=\n{json.dumps(script_out, ensure_ascii=False)}\n\n"
         f"episode_id={ep_id}\n"
     )
-    patch_prompt = _maybe_inject_genre_rules(infer_text, patch_prompt_base)
+    patch_prompt = _inject_genre_prompt_for_stage(genre_bundle, patch_prompt_base, "char_visual_patch")
     patch_out = await _run_agent_json_with_qc(
         stage="char_visual_patch",
         agent=series_agents.character_visual_patch_agent,
@@ -696,7 +706,9 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
 
     infer_text = "\n".join([args.theme or "", args.audience_view or "", args.series_title or ""]).strip()
     infer_text = infer_text or (args.series_title or "series")
-    setup_genre_key, _, setup_genre_caps = infer_genre_context_for_prompt(infer_text)
+    setup_bundle = infer_genre_bundle_for_prompt(infer_text)
+    setup_genre_key = str(setup_bundle.get("primary_genre") or "general")
+    setup_genre_caps = get_bundle_capabilities(setup_bundle)
 
     # 1) 市场调研
     market_prompt_base = (
@@ -704,7 +716,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "输出字段：market_report（中文，结构化即可）。\n\n"
         f"输入：\n主题={args.theme}\n受众={args.audience_view}\n质量模式={args.quality_mode}\n"
     )
-    market_prompt = _maybe_inject_genre_rules(infer_text, market_prompt_base)
+    market_prompt = _inject_genre_prompt_for_stage(setup_bundle, market_prompt_base, "market_research")
     market_out = await _run_agent_json(
         series_agents.market_research_agent,
         market_prompt,
@@ -719,7 +731,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "基于以下 market_report 生成 3 个长篇系列概念（JSON 输出）。\n\n"
         f"market_report=\n{market_out.get('market_report','')}\n"
     )
-    trend_prompt = _maybe_inject_genre_rules(infer_text, trend_prompt_base)
+    trend_prompt = _inject_genre_prompt_for_stage(setup_bundle, trend_prompt_base, "trend_scout")
     trend_out = await _run_agent_json(
         series_agents.trend_scout_series,
         trend_prompt,
@@ -734,7 +746,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "评审以下 3 个系列概念并推荐一个（JSON 输出）。\n\n"
         f"concepts=\n{json.dumps(trend_out.get('concepts', []), ensure_ascii=False)}\n"
     )
-    judge_prompt = _maybe_inject_genre_rules(infer_text, judge_prompt_base)
+    judge_prompt = _inject_genre_prompt_for_stage(setup_bundle, judge_prompt_base, "concept_judge")
     judge_out = await _run_agent_json(
         series_agents.concept_judge_series,
         judge_prompt,
@@ -754,12 +766,19 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     if not chosen_concept:
         raise RuntimeError("recommended_concept_id 未匹配到概念。")
 
+    # concept bundle：在最终 chosen_concept 确定后，重算一遍题材 bundle
+    # 用于后续 season_mainline / anchor_beats / 分集大纲 / 大纲复审等“上游 outline 链”。
+    concept_infer_text = json.dumps(chosen_concept, ensure_ascii=False)
+    concept_bundle = infer_genre_bundle_for_prompt(concept_infer_text)
+    concept_genre_key = str(concept_bundle.get("primary_genre") or "general")
+    concept_genre_caps = get_bundle_capabilities(concept_bundle)
+
     # 5) season_mainline
     mainline_prompt_base = (
         "基于已选概念生成整季主线（只写方向与阶段目标，不写分集细节）。\n\n"
         f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n"
     )
-    mainline_prompt = _maybe_inject_genre_rules(infer_text, mainline_prompt_base)
+    mainline_prompt = _inject_genre_prompt_for_stage(concept_bundle, mainline_prompt_base, "season_mainline")
     season_mainline_out = await _run_agent_json(
         series_agents.season_mainline_agent,
         mainline_prompt,
@@ -775,7 +794,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
         f"season_mainline=\n{json.dumps(season_mainline_out, ensure_ascii=False)}\n"
     )
-    growth_prompt = _maybe_inject_genre_rules(infer_text, growth_prompt_base)
+    growth_prompt = _inject_genre_prompt_for_stage(concept_bundle, growth_prompt_base, "character_growth")
     character_growth_out = await _run_agent_json(
         series_agents.character_growth_agent,
         growth_prompt,
@@ -791,7 +810,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"chosen_concept=\n{json.dumps(chosen_concept, ensure_ascii=False)}\n\n"
         f"season_mainline=\n{json.dumps(season_mainline_out, ensure_ascii=False)}\n"
     )
-    reveal_prompt = _maybe_inject_genre_rules(infer_text, reveal_prompt_base)
+    reveal_prompt = _inject_genre_prompt_for_stage(concept_bundle, reveal_prompt_base, "world_reveal_pacing")
     world_reveal_out = await _run_agent_json(
         series_agents.world_reveal_pacing_agent,
         reveal_prompt,
@@ -808,7 +827,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"character_growth=\n{json.dumps(character_growth_out, ensure_ascii=False)}\n\n"
         f"world_reveal_pacing=\n{json.dumps(world_reveal_out, ensure_ascii=False)}\n"
     )
-    coupling_prompt = _maybe_inject_genre_rules(infer_text, coupling_prompt_base)
+    coupling_prompt = _inject_genre_prompt_for_stage(concept_bundle, coupling_prompt_base, "coupling_reconciler")
     coupling_out = await _run_agent_json(
         series_agents.coupling_reconciler_agent,
         coupling_prompt,
@@ -826,7 +845,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"world_reveal_pacing=\n{json.dumps(world_reveal_out, ensure_ascii=False)}\n\n"
         f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
     )
-    spine_prompt = _maybe_inject_genre_rules(infer_text, spine_prompt_base)
+    spine_prompt = _inject_genre_prompt_for_stage(concept_bundle, spine_prompt_base, "series_spine")
     series_spine_out = await _run_agent_json(
         series_agents.series_spine_agent,
         spine_prompt,
@@ -841,7 +860,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "基于 series_spine 输出 anchor_beats（数量不固定，优先人物成长承重）。\n\n"
         f"series_spine=\n{json.dumps(series_spine_out, ensure_ascii=False)}\n"
     )
-    anchors_prompt = _maybe_inject_genre_rules(infer_text, anchors_prompt_base)
+    anchors_prompt = _inject_genre_prompt_for_stage(concept_bundle, anchors_prompt_base, "anchor_beats")
     anchor_beats_out = await _run_agent_json(
         series_agents.anchor_beats_agent,
         anchors_prompt,
@@ -859,7 +878,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
         f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
     )
-    outline_prompt = _maybe_inject_genre_rules(infer_text, outline_prompt_base)
+    outline_prompt = _inject_genre_prompt_for_stage(concept_bundle, outline_prompt_base, "episode_outline_expander")
 
     min_outline_score = 8 if args.quality_mode == "quality" else 7
     max_outline_rounds = 3 if args.quality_mode == "quality" else 2
@@ -885,7 +904,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
             f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(outline_out, ensure_ascii=False)}\n\n"
         )
-        review_prompt = _maybe_inject_genre_rules(infer_text, review_prompt_base)
+        review_prompt = _inject_genre_prompt_for_stage(concept_bundle, review_prompt_base, "outline_review")
         outline_review_out = await _run_agent_json(
             series_agents.outline_review_agent,
             review_prompt,
@@ -913,14 +932,16 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
                 + "\nrewrite_brief:\n"
                 + rewrite_brief
             )
-            outline_prompt = _maybe_inject_genre_rules(infer_text, outline_prompt)
+            outline_prompt = _inject_genre_prompt_for_stage(
+                concept_bundle, outline_prompt, "episode_outline_expander"
+            )
 
     # 12) 角色设定（character_bible）
     cb_prompt_base = (
         "根据 series_outline 抽取主要角色并生成 character_bible（JSON 输出，含 face_triptych_prompt_cn 与 body_triptych_prompt_cn，均 <=800 汉字）。\n\n"
         f"series_outline=\n{json.dumps(outline_out, ensure_ascii=False)}\n"
     )
-    cb_prompt = _maybe_inject_genre_rules(infer_text, cb_prompt_base)
+    cb_prompt = _inject_genre_prompt_for_stage(concept_bundle, cb_prompt_base, "character_bible")
     cb_out = await _run_agent_json_with_qc(
         stage="character_bible",
         agent=series_agents.character_bible_agent,
@@ -930,7 +951,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         user_id=user_id,
         session_id="series_setup_character_bible",
         debug_dir=debug_dir,
-        genre_caps=setup_genre_caps,
+        genre_caps=concept_genre_caps,
     )
 
     series_title = outline_out.get("title") or args.series_title or "series"
@@ -980,12 +1001,32 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     }
     _dump_json(out_paths["episode_batch"], episode_batch)
 
-    ensure_registry_file(
-        out_paths["production_carry_registry"],
+    reg_path = out_paths["production_carry_registry"]
+    registry = ensure_registry_file(
+        reg_path,
         series_slug=series_dir_name,
         display_title=series_title,
-        genre_key=setup_genre_key,
+        genre_key=concept_genre_key,
+        genre_bundle=concept_bundle,
     )
+    si = registry.setdefault("series_identity", {})
+    si["genre_key"] = concept_genre_key
+    si["primary_genre"] = concept_genre_key
+    si["final_primary_genre"] = concept_genre_key
+    si["setup_primary_genre"] = setup_genre_key
+    si["initial_vs_final_changed"] = bool(setup_genre_key != concept_genre_key)
+    si["bundle_source"] = "chosen_concept"
+    si["setting_tags"] = list(concept_bundle.get("setting_tags") or [])
+    si["engine_tags"] = list(concept_bundle.get("engine_tags") or [])
+    si["relationship_tags"] = list(concept_bundle.get("relationship_tags") or [])
+    si["resolved_alias_hits"] = concept_bundle.get("resolved_alias_hits")
+    si["primary_resolution_trace"] = concept_bundle.get("primary_resolution_trace")
+    si["confidence"] = concept_bundle.get("confidence")
+    summ = summarize_genre_bundle_for_debug(setup_bundle)
+    summ2 = summarize_genre_bundle_for_debug(concept_bundle)
+    if summ or summ2:
+        si["initial_bundle_summary"] = f"setup: {summ}" + (f" | concept: {summ2}" if summ2 else "")
+    save_registry(reg_path, registry)
 
     _write_series_manifest(series_dir, series_title, paths=out_paths)
     print(f"[series-setup] 输出完成：{series_dir}")
@@ -1041,7 +1082,7 @@ async def _run_plot_phase_with_optional_judge(
     ep_id: int,
     plot_prompt_base: str,
     function_out: Dict[str, Any],
-    infer_text: str,
+    genre_bundle: Dict[str, Any],
     quality_mode: str,
     use_judges: bool,
     judge_retries: int,
@@ -1058,9 +1099,10 @@ async def _run_plot_phase_with_optional_judge(
     plot_out: Dict[str, Any] = {}
 
     for pi in range(max_plot_rounds):
-        plot_prompt = _maybe_inject_genre_rules(
-            infer_text,
+        plot_prompt = _inject_genre_prompt_for_stage(
+            genre_bundle,
             plot_prompt_base + (f"\n\n{plot_feedback}" if plot_feedback else ""),
+            "episode_plot",
         )
         plot_out = await _run_agent_json_with_qc(
             stage="plot",
@@ -1082,7 +1124,7 @@ async def _run_plot_phase_with_optional_judge(
             f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
             f"plot=\n{json.dumps(plot_out, ensure_ascii=False)}\n"
         )
-        pj_prompt = _maybe_inject_genre_rules(infer_text, pj_prompt_base)
+        pj_prompt = _inject_genre_prompt_for_stage(genre_bundle, pj_prompt_base, "gate_plot_judge")
         plot_judge_out = await _run_agent_json(
             series_agents.episode_plot_judge_agent,
             pj_prompt,
@@ -1156,7 +1198,17 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
     session_service = InMemorySessionService()
 
     infer_text = (series_outline.get("logline") or "") + "\n" + (series_outline.get("overall_arc") or "")
-    _, _, batch_genre_caps = infer_genre_context_for_prompt(infer_text)
+    batch_bundle: Optional[Dict[str, Any]] = None
+    reg_p = paths.get("production_carry_registry")
+    if reg_p is not None and Path(reg_p).is_file():
+        try:
+            reg_doc = load_registry(Path(reg_p))
+            batch_bundle = bundle_from_registry_series_identity(reg_doc.get("series_identity") or {})
+        except (ValueError, OSError, json.JSONDecodeError):
+            batch_bundle = None
+    if not batch_bundle or not str(batch_bundle.get("primary_genre") or "").strip():
+        batch_bundle = infer_genre_bundle_for_prompt(infer_text)
+    batch_genre_caps = get_bundle_capabilities(batch_bundle)
 
     # 如果用户希望“续写”，先加载现有 episode_batch.json
     existing_batch_path = paths["episode_batch"]
@@ -1183,7 +1235,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"anchor_beats=\n{json.dumps(anchor_beats, ensure_ascii=False)}\n\n"
             f"episode_id={ep_id}\n"
         )
-        function_prompt = _maybe_inject_genre_rules(infer_text, function_prompt_base)
+        function_prompt = _inject_genre_prompt_for_stage(batch_bundle, function_prompt_base, "episode_function")
         function_out = await _run_agent_json_with_qc(
             stage="episode_function",
             agent=series_agents.episode_function_agent,
@@ -1241,7 +1293,9 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                 f"plot=\n{json.dumps(plot_obj, ensure_ascii=False)}",
                 1,
             )
-            return _maybe_inject_genre_rules(infer_text, core + (f"\n\n{extra}" if extra.strip() else ""))
+            return _inject_genre_prompt_for_stage(
+                batch_bundle, core + (f"\n\n{extra}" if extra.strip() else ""), "episode_script"
+            )
 
         def _storyboard_prompt_with(plot_obj: Dict[str, Any], script_obj: Dict[str, Any], extra: str = "") -> str:
             p = storyboard_prompt_base.replace(
@@ -1254,7 +1308,9 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                 f"script=\n{json.dumps(script_obj, ensure_ascii=False)}",
                 1,
             )
-            return _maybe_inject_genre_rules(infer_text, p + (f"\n\n{extra}" if extra.strip() else ""))
+            return _inject_genre_prompt_for_stage(
+                batch_bundle, p + (f"\n\n{extra}" if extra.strip() else ""), "episode_storyboard"
+            )
 
         pending_scope: Optional[str] = None
         pkg_feedback = ""
@@ -1274,7 +1330,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                     ep_id=ep_id,
                     plot_prompt_base=plot_prompt_base,
                     function_out=function_out,
-                    infer_text=infer_text,
+                    genre_bundle=batch_bundle,
                     quality_mode=args.quality_mode,
                     use_judges=use_judges,
                     judge_retries=jr,
@@ -1369,7 +1425,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                 f"script=\n{json.dumps(script_out, ensure_ascii=False)}\n\n"
                 f"storyboard=\n{json.dumps(storyboard_out, ensure_ascii=False)}\n"
             )
-            pkg_prompt = _maybe_inject_genre_rules(infer_text, pkg_prompt_base)
+            pkg_prompt = _inject_genre_prompt_for_stage(batch_bundle, pkg_prompt_base, "gate_package_judge")
             package_judge_out = await _run_agent_json(
                 series_agents.episode_package_judge_agent,
                 pkg_prompt,
@@ -1412,7 +1468,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             f"script=\n{json.dumps(script_out, ensure_ascii=False)}\n\n"
             f"storyboard=\n{json.dumps(storyboard_out, ensure_ascii=False)}\n\n"
         )
-        memory_prompt = _maybe_inject_genre_rules(infer_text, memory_prompt_base)
+        memory_prompt = _inject_genre_prompt_for_stage(batch_bundle, memory_prompt_base, "episode_memory")
         memory_out = await _run_agent_json_with_qc(
             stage="memory",
             agent=series_agents.episode_memory_agent,
@@ -1436,7 +1492,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             series_outline=series_outline,
             script_out=script_out,
             ep_id=ep_id,
-            infer_text=infer_text,
+            genre_bundle=batch_bundle,
             quality_mode=args.quality_mode,
             session_service=session_service,
             user_id=user_id,

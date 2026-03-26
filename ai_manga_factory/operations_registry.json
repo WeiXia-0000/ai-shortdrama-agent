@@ -165,6 +165,23 @@
       "notes": "CLI：--kf-query-mode 含 recent_changes、new_on_episode；角色过滤用 --cast-id。"
     },
     {
+      "operation_id": "query.genre_bundle",
+      "scope": "series",
+      "inputs": {
+        "series_dir": { "type": "path", "required": true }
+      },
+      "outputs": { "kind": "json" },
+      "reads_from": ["L3_series/03b_production_carry_registry.json"],
+      "writes_to": [],
+      "state_touch_list": [],
+      "ui_exposure": "console_action",
+      "requires_confirmation": false,
+      "idempotent": true,
+      "batch_safe": true,
+      "implemented": true,
+      "notes": "只读：series_identity 中的题材 bundle / 推断轨迹 / bundle_source（与 dashboard 一致）。"
+    },
+    {
       "operation_id": "carry.apply_promise_overrides",
       "scope": "series",
       "inputs": {

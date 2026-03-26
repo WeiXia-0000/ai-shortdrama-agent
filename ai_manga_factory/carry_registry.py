@@ -25,7 +25,7 @@ from .carry_structured_refresh import (
     refresh_promise_lane_structured,
     refresh_relation_pressure_structured,
 )
-from .genre_rules import infer_genre_context_for_prompt
+from .genre_rules import bundle_from_registry_series_identity, infer_genre_bundle_for_prompt
 
 SCHEMA_VERSION = "1.0"
 
@@ -71,14 +71,32 @@ def build_empty_shell(
     series_slug: str,
     display_title: str,
     genre_key: str = "",
+    genre_bundle: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    gb = genre_bundle if isinstance(genre_bundle, dict) else {}
+    primary = str(gb.get("primary_genre") or genre_key or "")
+    setting_tags = gb.get("setting_tags") if isinstance(gb.get("setting_tags"), list) else []
+    engine_tags = gb.get("engine_tags") if isinstance(gb.get("engine_tags"), list) else []
+    relationship_tags = (
+        gb.get("relationship_tags") if isinstance(gb.get("relationship_tags"), list) else []
+    )
+    series_identity: Dict[str, Any] = {
+        "series_slug": series_slug,
+        "display_title": display_title,
+        "genre_key": primary or "",
+        "primary_genre": primary or "",
+        "setting_tags": setting_tags,
+        "engine_tags": engine_tags,
+        "relationship_tags": relationship_tags,
+    }
+    if isinstance(genre_bundle, dict):
+        for k in ("resolved_alias_hits", "primary_resolution_trace", "confidence"):
+            if k in genre_bundle and genre_bundle[k] is not None:
+                series_identity[k] = genre_bundle[k]
+
     return {
         "schema_version": SCHEMA_VERSION,
-        "series_identity": {
-            "series_slug": series_slug,
-            "display_title": display_title,
-            "genre_key": genre_key or "",
-        },
+        "series_identity": series_identity,
         "sync_meta": {
             "last_full_refresh_at": None,
             "last_full_refresh_source": None,
@@ -204,6 +222,7 @@ def ensure_registry_file(
     series_slug: str,
     display_title: str,
     genre_key: str = "",
+    genre_bundle: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """若不存在则写入空壳并返回；若存在则加载校验。"""
     if path.exists():
@@ -212,6 +231,7 @@ def ensure_registry_file(
         series_slug=series_slug,
         display_title=display_title,
         genre_key=genre_key,
+        genre_bundle=genre_bundle,
     )
     save_registry(path, shell)
     return shell
@@ -356,24 +376,65 @@ def sync_carry_registry_minimal(
     reg_path = registry_path_from_paths(paths)
     slug = _slug(series_title)
     outline_path = paths["series_outline"]
-    genre_key = ""
-    if outline_path.exists():
-        try:
-            ol = json.loads(outline_path.read_text(encoding="utf-8"))
-            infer_t = (ol.get("logline") or "") + "\n" + (ol.get("overall_arc") or "")
-            genre_key, _, _ = infer_genre_context_for_prompt(infer_t)
-        except (OSError, json.JSONDecodeError):
-            pass
 
     registry = ensure_registry_file(
         reg_path,
         series_slug=slug,
         display_title=series_title,
-        genre_key=genre_key,
+        genre_key="",
+        genre_bundle={},
     )
+    si0 = registry.get("series_identity") or {}
+    existing_src = str(si0.get("bundle_source") or "")
+    existing_primary = str(
+        si0.get("final_primary_genre") or si0.get("primary_genre") or si0.get("genre_key") or ""
+    ).strip()
+    preserve_genre = existing_primary and existing_src in (
+        "chosen_concept",
+        "chosen_concept_final",
+        "final",
+        "series_setup",
+    )
+
+    genre_key = existing_primary
+    genre_bundle: Dict[str, Any] = {}
+    if preserve_genre:
+        rb = bundle_from_registry_series_identity(si0)
+        genre_bundle = rb if isinstance(rb, dict) else {}
+    elif outline_path.exists():
+        try:
+            ol = json.loads(outline_path.read_text(encoding="utf-8"))
+            infer_t = (ol.get("logline") or "") + "\n" + (ol.get("overall_arc") or "")
+            genre_bundle = infer_genre_bundle_for_prompt(infer_t)
+            genre_key = str(genre_bundle.get("primary_genre") or "")
+        except (OSError, json.JSONDecodeError):
+            genre_key = genre_key or ""
+
     registry["series_identity"]["display_title"] = series_title
     registry["series_identity"]["series_slug"] = slug
-    registry["series_identity"]["genre_key"] = genre_key
+    if not preserve_genre:
+        registry["series_identity"]["genre_key"] = genre_key
+        registry["series_identity"]["primary_genre"] = genre_key
+        registry["series_identity"]["setting_tags"] = (
+            genre_bundle.get("setting_tags") if isinstance(genre_bundle.get("setting_tags"), list) else []
+        )
+        registry["series_identity"]["engine_tags"] = (
+            genre_bundle.get("engine_tags") if isinstance(genre_bundle.get("engine_tags"), list) else []
+        )
+        registry["series_identity"]["relationship_tags"] = (
+            genre_bundle.get("relationship_tags")
+            if isinstance(genre_bundle.get("relationship_tags"), list)
+            else []
+        )
+        if genre_key:
+            registry["series_identity"]["resolved_alias_hits"] = genre_bundle.get("resolved_alias_hits")
+            registry["series_identity"]["primary_resolution_trace"] = genre_bundle.get(
+                "primary_resolution_trace"
+            )
+            registry["series_identity"]["confidence"] = genre_bundle.get("confidence")
+        registry["series_identity"]["bundle_source"] = (
+            "outline_infer" if genre_key else registry["series_identity"].get("bundle_source")
+        )
 
     bible = json.loads(paths["character_bible"].read_text(encoding="utf-8"))
     mem_path = paths["series_memory"]

@@ -1,76 +1,475 @@
 {
-  "horror": {
-    "display_name": "恐怖",
-    "id": "horror",
+  "schema_version": "2.1",
+  "primary_genres": {
+    "general": {
+      "display_name": "通用短剧",
+      "id": "general",
+      "aliases": ["通用", "泛题材", "general"],
+      "keywords": ["短剧", "网文", "爽文", "连载"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": false,
+        "prefers_logic_trial": false,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": false
+      },
+      "frontmatter": {
+        "name": "通用短剧",
+        "pacingRule": "开场有冲突，结尾留动作钩，避免报告式叙述。"
+      },
+      "rules_block": "以可拍动作推动剧情。每场必须有位移（立场、资源、关系或认知）。",
+      "sections": [{"title": "通用铁律", "content": "动作先于解释；钩子先于总结。"}],
+      "setting_tags": ["modern_city", "school_campus", "workplace_city"],
+      "engine_tags": ["identity_reveal", "revenge_payback"],
+      "relationship_tags": ["alliance_flip", "status_hierarchy_conflict"],
+      "hybrid_with": ["urban", "modern_romance", "suspense_mystery"]
+    },
+    "urban": {
+      "display_name": "都市逆袭",
+      "id": "urban",
+      "aliases": ["都市", "都市爽文", "豪门逆袭", "赘婿逆袭", "商战逆袭"],
+      "keywords": ["都市", "豪门", "逆袭", "打脸", "商战", "权势", "阶层", "赘婿", "总裁", "财阀"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": false,
+        "prefers_logic_trial": false,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": true
+      },
+      "frontmatter": {
+        "name": "都市逆袭",
+        "chapterTypes": ["压制场", "博弈场", "翻盘场", "站队场", "留钩场"],
+        "fatigueWords": ["冷笑", "震惊", "深吸一口气", "竟然就是", "由于", "区区一个", "不可思议", "原来如此"],
+        "pacingRule": "开场必须有明确压制；每集至少一次可见的地位、资源或站队变化；不能连续两集只铺垫不兑现；至少每三集要出现一次公开场面的反转或羞辱回击。",
+        "satisfactionTypes": ["身份反转打脸", "对手吃瘪", "资源兑现", "关键人物改口", "当众翻盘", "站队逆转"],
+        "openingRule": "前一百字内给出不平等关系或当众羞辱。",
+        "endingHookRule": "结尾优先留在公开翻脸、关键人改口、资源被截、身份将揭未揭的瞬间。",
+        "protagonistPressureType": "阶层压制、资源断供、舆论羞辱、身份贬低、站队孤立。",
+        "commonFailureModes": ["反派过笨", "翻盘全靠一个电话", "没有现实代价", "主角一直顺风", "所有人都只会嘴炮"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 反派像木头一样只负责挨打，不会反扑、反制或调动更高层资源\n- 关键问题全靠‘一个电话’解决，没有代价、铺垫和关系来源\n- 职场、商业、豪门权力结构完全悬空，像玄幻战力碾压\n- 爽点只靠台词宣告，没有现场反应、旁人态度变化和地位变化\n- 连续多集都在‘调查、准备、埋伏笔’，看不见实际兑现\n\n## 现实约束\n\n- 资源不能凭空出现，必须看到交换、代价、关系链或旧布置\n- 爽点必须外显：座位变化、签字权变化、话语权变化、保安态度变化、旁人站起、媒体改口、股东沉默、家族晚宴翻脸\n- 对手必须有层级，不能所有反派都只会同一种压制方式\n\n## 语言铁律\n\n- 少写抽象分析，多写试探、压人、翻脸、站队、改口、逼问\n- 台词要短、沉、带刺，避免商学院汇报腔\n- 视觉锚点优先：黑金卡、合同、席位、手机免提、媒体直播、股份印章、请柬、车钥匙、门禁权限\n\n## 叙事指导\n\n都市逆袭的核心不是‘主角很强’，而是‘主角在被压制的现实场面里一点点把局势翻过来’。每场戏都尽量让权力关系被看见：谁先坐、谁后站、谁递话、谁闭嘴、谁改口。每个阶段都要有至少一个具体可恨的人在压主角，而不是抽象的资本或系统。最能打动观众的不是设定，而是公开场合的地位反转和带代价的翻盘。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 不要让所有反派都只会嘲讽，不会真正调资源压人\n- 不要让翻盘只发生在主角脑内，必须被旁人看见\n- 不要连续几集都只是‘准备阶段’"
+        },
+        {
+          "title": "现实约束",
+          "content": "- 资源、身份、地位、席位、话语权必须有现实承载\n- 爽点必须落在可拍场景里，而不是总结句"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 少内心，多对峙\n- 多用试探、施压、逼问、改口、站队来推进戏"
+        },
+        {
+          "title": "叙事指导",
+          "content": "每一阶段都要有明确压制者、明确翻盘点、明确代价。观众要能说出：这一集主角到底是上了还是下了。"
+        }
+      ],
+      "outline_bias": [
+        "阶段设计优先采用‘压制→试探→反击→反压→大翻盘’的波形，而不是一路平推。",
+        "分集大纲里应频繁出现公开场合冲突、站队变化、资源变化、身份将揭未揭。",
+        "每阶段至少有一个具体压制者，不要把敌人都写成抽象系统。"
+      ],
+      "setting_tags": ["modern_city", "workplace_city"],
+      "engine_tags": ["identity_reveal", "revenge_payback", "profession_awaken"],
+      "relationship_tags": ["public_face_slap", "status_hierarchy_conflict", "alliance_flip"],
+      "hybrid_with": ["supernatural_urban", "system_powerup", "modern_romance"]
+    },
+    "modern_romance": {
+      "display_name": "现代情感",
+      "id": "modern_romance",
+      "aliases": ["现代情感", "现言", "甜虐", "先婚后爱", "追妻火葬场", "契约婚姻"],
+      "keywords": ["恋爱", "婚约", "前任", "情感", "拉扯", "先婚后爱", "误会", "追妻", "离婚", "心动"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": false,
+        "prefers_logic_trial": false,
+        "prefers_relationship_push": true,
+        "prefers_status_hierarchy_conflict": false
+      },
+      "frontmatter": {
+        "name": "现代情感",
+        "chapterTypes": ["关系钩子", "拉扯场", "修罗场", "误会反噬场", "偏爱兑现场", "反转留钩场"],
+        "fatigueWords": ["心脏漏了一拍", "呼吸一滞", "该死的心动", "眼眶一热", "占有欲", "她终于明白了"],
+        "pacingRule": "开场就要把关系扔进不稳定状态；每集至少一次关系位移；每三集至少一次明显立场变化或公开护短；不能连续两集只靠误会拖戏。",
+        "satisfactionTypes": ["公开护短", "错位反杀", "误会拆开", "不再回头", "偏爱兑现", "对方失控追人"],
+        "openingRule": "前段必须尽快给出关系裂口或错位：误会、旧怨、婚约、前任回归、家族干预。",
+        "endingHookRule": "结尾留在关系动作上：追出去、拉住、松手、关门、改口、错过、看见不该看的画面。",
+        "protagonistPressureType": "情感错位、身份误解、家族干预、旧关系回潮、公开场合羞辱、价值观不一致。",
+        "commonFailureModes": ["全靠误会拖长", "只会互相嘴硬", "甜和虐像两张皮", "所有人都在解释感情", "没有行动兑现"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 关系推进只靠台词表白，没有行动兑现\n- 霸总/强势方只有控制欲，没有代价和付出\n- 女主只会挨虐、原谅、流泪，没有选择与立场\n- 全程靠误会拖时长，误会拆开后什么都没有\n- 情感戏全是长段心路说明，缺乏可拍的动作与反应\n\n## 情感铁律\n\n- 甜不是说情话，是偏爱、例外、维护、公开站队、替她承担后果\n- 虐不是哭天喊地，是错过、改口、转身、没有赶到、选择了立场\n- 追妻的重点不是男主惨，而是女主不再轻易回头\n\n## 语言铁律\n\n- 少讲道理，多写动作：追、拦、护、让、推开、错身、迟到、改签、关机、挡酒\n- 台词要有攻防，不要人人都像情感博主\n- 视觉锚点：戒指、机票、病房门、结婚证、聊天记录、未接来电、挡酒的手、雨中的伞\n\n## 叙事指导\n\n现代情感短剧吃的不是爱情概念，而是关系位移。每一场最好只做一个关系动作：靠近、拉远、决裂、维护、错过。公开场合尤其重要，因为‘别人看见了什么’会直接改变关系重量。主角的情感成长要靠选择和代价逼出来，不要只靠想明白。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 不要全程靠误会拖戏\n- 不要只会嘴硬和解释\n- 不要让情绪全靠独白"
+        },
+        {
+          "title": "情感铁律",
+          "content": "- 爱要靠行动体现\n- 虐要靠错过和站位体现\n- 每场只推动一个关系位移"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 少讲爱，多做选择\n- 台词要有攻防，不要流水账表白"
+        },
+        {
+          "title": "叙事指导",
+          "content": "每三集至少给观众一次关系重新站位的强兑现：公开护短、误会拆开、错过反噬或立场转向。"
+        }
+      ],
+      "outline_bias": [
+        "分集推进应围绕关系位移，而不是围绕设定说明。",
+        "关键集要强调公开场合的站位变化、维护或错过。",
+        "不要让角色一直在想，必须用动作和选择来改关系。"
+      ],
+      "setting_tags": ["modern_city", "workplace_city", "school_campus"],
+      "engine_tags": ["identity_reveal", "revenge_payback"],
+      "relationship_tags": ["romance_push_pull", "trust_collapse", "contract_marriage_tension"],
+      "hybrid_with": ["urban", "rule_horror", "historical_power"]
+    },
+    "horror": {
+      "display_name": "恐怖惊悚",
+      "id": "horror",
+      "aliases": ["恐怖", "惊悚", "中式恐怖", "灵异惊悚"],
+      "keywords": ["恐怖", "惊悚", "诡异", "异变", "灵异", "阴森", "怪声", "残影"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": true,
+        "prefers_logic_trial": false,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": false
+      },
+      "frontmatter": {
+        "name": "恐怖惊悚",
+        "chapterTypes": ["异常开场", "压迫场", "试探场", "失控场", "留钩场"],
+        "fatigueWords": ["毛骨悚然", "不寒而栗", "浑身发冷", "头皮发麻", "仿佛", "不禁", "竟然", "一种莫名的恐惧"],
+        "pacingRule": "前段必须尽快出现明确可见异常；每集至少一次认知修正（原本安全处变危险）；结尾尽量留在角色生死瞬间或异常逼近瞬间。",
+        "satisfactionTypes": ["真相揭开一角", "识破伪装者", "利用异常反制", "反杀危险源", "找到生路"],
+        "openingRule": "开场先给视觉异常，不要先写心理感受。",
+        "endingHookRule": "结尾优先留在动作钩：门后有东西、熟人不对劲、藏身处失效、保命办法被反噬。",
+        "protagonistPressureType": "安全区失效、熟悉事物失真、认知错位、生存空间收缩、错误判断出事。",
+        "commonFailureModes": ["只会渲染害怕", "异常解释过早", "角色过于冷静", "反复吓人但没新信息", "全靠没信号"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 恐怖源头刚开场就讲透，失去未知感\n- 只写心理害怕，不写身体和动作反应\n- 主角像开挂一样冷静处理一切，没有普通人的犹豫和失误\n- 所有危险都靠‘突然跳脸’而不是层层验证与失控\n- 手机永远没信号、门永远打不开这种廉价套路反复用\n\n## 恐惧递进\n\n- 第一层：细节错位（声音、光、影、物件、熟人反应）\n- 第二层：异常被确认，原本安全的地方失效\n- 第三层：角色必须做选择，而且选错会出事\n- 第四层：原本能保命的办法彻底失效，角色被逼近绝境\n\n## 语言铁律\n\n- 严禁写‘他很害怕’，必须写瞳孔、屏息、停步、后退、手指、肩背等动作变化\n- 不要长段解释异常原理，先把异常摆到观众眼前\n- 台词短、试探、停顿、压迫，不要人人都像在做案情汇报\n\n## 叙事指导\n\n恐怖短剧最重要的是‘异常可见、危险升级、选择出错、保命失效’。每场最好只做一件事：发现、确认、试错、失控、逃命。不要把恐怖写成说明书，也不要写成纯血浆堆砌。真正让观众留下来的，是熟悉世界一点点坏掉的过程。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 不要过早讲透源头\n- 不要只写害怕而没有动作\n- 不要靠廉价套路反复吓人"
+        },
+        {
+          "title": "恐惧递进",
+          "content": "- 细节错位→异常确认→误判出事→保命失效"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 恐惧必须动作化\n- 异常必须可见化\n- 台词短而压迫"
+        },
+        {
+          "title": "叙事指导",
+          "content": "每集都要打破一次安全感预期，结尾尽量留动作钩，不留空话钩。"
+        }
+      ],
+      "outline_bias": [
+        "阶段设计优先采用‘异常发现→确认→误判→失控’递进，而不是一直解释。",
+        "单集设计要优先保证可见异常和安全区失效，不要只推进设定。",
+        "关键锚点应是观众能记住的恐怖事件，而不是抽象认知变化。"
+      ],
+      "setting_tags": ["school_campus", "modern_city"],
+      "engine_tags": ["survival_trial", "weird_rule_exploit"],
+      "relationship_tags": ["trust_collapse", "protector_dynamic"],
+      "hybrid_with": ["rule_horror", "suspense_mystery"]
+    },
+    "rule_horror": {
+      "display_name": "规则怪谈",
+      "id": "rule_horror",
+      "aliases": ["规则怪谈", "副本怪谈", "无限流", "规则副本"],
+      "keywords": ["规则怪谈", "规则", "副本", "通关", "禁忌条款", "守则", "规则条文"],
+      "capabilities": {
+        "uses_explicit_rules": true,
+        "requires_rule_execution_map": true,
+        "requires_visible_rule_punishment": true,
+        "has_hidden_mechanism": true,
+        "prefers_logic_trial": true,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": false
+      },
+      "frontmatter": {
+        "name": "规则怪谈",
+        "chapterTypes": ["规则抛出", "试错场", "误判场", "反转场", "逃生留钩场"],
+        "fatigueWords": ["毛骨悚然", "诡异至极", "细思极恐", "后背发凉", "他想起规则", "不由得"],
+        "pacingRule": "开场尽快出现规则载体；每集至少验证或误判一条规则；每三集至少推翻一条旧理解；结尾优先留在规则变化或错误代价上。",
+        "satisfactionTypes": ["识破假规则", "利用规则漏洞反制", "找到隐藏条款", "副本阶段通关", "从错误理解中翻盘"],
+        "openingRule": "规则必须通过可见载体进入故事：告示、广播、纸条、系统屏、值班册、群公告。",
+        "endingHookRule": "结尾优先留在：多了一条规则、少了一条规则、字迹变化、误判后果即将兑现的瞬间。",
+        "protagonistPressureType": "规则冲突、信息不完整、试错成本高、安全区短暂、规则真假混杂。",
+        "commonFailureModes": ["规则只是摆设", "人人开会分析但不试错", "违规无代价", "通关靠临时开挂", "线索没有前置"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 规则写出来只是装饰，后面根本不触发也不误判\n- 所有人只会围桌分析，不会落到现场验证\n- 主角每次试错都不付代价，全靠脑补和外挂\n- 通关手段与前面细节无关，临时天降解法\n- 规则冲突没有逼出选择，角色只是顺着作者的正确答案走\n\n## 机制铁律\n\n- 规则至少要有两层：表层生路、深层陷阱\n- 规则最可怕的不是文字本身，而是执行成本和误判代价\n- 违规后果必须可见，且最好能在当场或短时间内兑现\n- 解法必须伏笔化：道具、环境、顺序、说法、身份都应提前埋下\n\n## 语言铁律\n\n- 不要写成说明书，规则要一边跑一边验证\n- 规则载体要可见：告示牌、广播、自动打印纸、颜色异常的制服、电子屏、值班日志\n- 恐怖感来自‘哪条能信’，不是来自长段渲染\n\n## 叙事指导\n\n规则怪谈的核心是‘不完整信息下的高代价试错’。每场尽量围绕一条规则：发现、怀疑、误读、验证、推翻。角色聪明不是因为能背答案，而是因为能记细节、发现矛盾、承受试错代价。结尾尽量留在规则变化和误判反噬上。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 规则不能只是摆设\n- 试错必须付代价\n- 解法必须前置埋伏笔"
+        },
+        {
+          "title": "机制铁律",
+          "content": "- 表层规则+陷阱规则并存\n- 规则冲突必须逼出选择\n- 错误理解要反噬"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 少总结，多验证\n- 规则必须载体化\n- 恐怖来自真假难辨"
+        },
+        {
+          "title": "叙事指导",
+          "content": "每集都要让观众至少重新判断一次‘哪条规则是真的’，并让判断有风险。"
+        }
+      ],
+      "outline_bias": [
+        "阶段设计优先采用‘规则抛出→试错→误判→旧理解被推翻→更深层规则出现’。",
+        "单集动力应优先围绕规则验证与代价，而不是空谈世界观。",
+        "关键锚点尽量设计成规则变化、错误代价、隐藏条款揭露等高记忆事件。"
+      ],
+      "setting_tags": ["school_campus", "dungeon_copy"],
+      "engine_tags": ["survival_trial", "weird_rule_exploit", "identity_reveal"],
+      "relationship_tags": ["alliance_flip", "trust_collapse"],
+      "hybrid_with": ["horror", "modern_romance", "suspense_mystery"]
+    },
+    "apocalypse": {
+      "display_name": "末世求生",
+      "id": "apocalypse",
+      "aliases": ["末世", "灾变", "废土", "末日求生", "灾难求生"],
+      "keywords": ["末世", "灾难", "尸潮", "极寒", "洪灾", "变异", "废土", "求生", "囤货"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": false,
+        "prefers_logic_trial": true,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": false
+      },
+      "frontmatter": {
+        "name": "末世求生",
+        "chapterTypes": ["灾变开场", "资源争夺场", "队伍试探场", "庇护点危机场", "断供留钩场"],
+        "fatigueWords": ["人性", "绝望", "末日降临", "艰难求生", "瑟瑟发抖", "活下去才是唯一"],
+        "pacingRule": "开场尽快明确灾变形态；每集至少有一次资源、生存空间、队伍秩序或信任结构的变化；不能连续两集只有赶路和说明。",
+        "satisfactionTypes": ["囤货兑现", "逃出生天", "识破背叛者", "保住庇护点", "反杀掠夺者", "先知优势兑现"],
+        "openingRule": "前段必须让观众迅速看见灾变环境和生存压强，不要先讲背景。",
+        "endingHookRule": "结尾优先留在补给断、庇护点将破、队伍分裂、灾变升级、外部威胁逼近的瞬间。",
+        "protagonistPressureType": "资源断供、庇护点不稳、队伍分裂、灾变升级、体力透支、判断失误致命。",
+        "commonFailureModes": ["一直赶路", "只谈人性不谈生存机制", "囤货没兑现", "末世只是背景板", "团队关系不变化"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 末世只是背景，剧情仍像普通都市文\n- 一直在赶路、搜物资、打怪，却没有队伍关系和秩序变化\n- 主角资源总是刚好够用，没有真正的断供和取舍\n- 灾变类型存在感很弱，看不出是极寒、洪水、丧尸还是变异兽\n- 每一集都只是‘发现危险→逃跑’，没有策略、博弈和代价\n\n## 生存铁律\n\n- 资源、地形、天气、病痛、秩序、信任都必须参与冲突\n- 主角每个选择都应体现代价：拿了什么，就可能失去什么\n- 队伍不是摆设，谁分粮、谁守夜、谁掌路线、谁被排挤，都是戏\n- 末世里的爽点不是单纯战力，而是提前准备兑现、判断正确、资源反杀和人性翻盘\n\n## 语言铁律\n\n- 少用宏大抒情，多写身体消耗、环境压迫、资源数字感和现场选择\n- 场景要有具体生存问题：断电、结冰、断粮、尸群、积水、屋顶、封桥、药品、发热、饥饿\n- 台词尽量带目的，不要人人都在感叹末世\n\n## 叙事指导\n\n末世短剧的核心是‘灾变环境 + 资源秩序 + 人性博弈’三线并进。每阶段都要让环境压力升级，同时让队伍结构、信任结构和补给结构发生变化。末世重生类的爽感尤其来自‘前世踩过坑，这次不再踩’的兑现，而不是知道很多设定却不用。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 不要让末世只是背景板\n- 不要一直赶路而没有秩序变化\n- 不要囤货和资源只说不用"
+        },
+        {
+          "title": "生存铁律",
+          "content": "- 资源、环境、队伍、信任必须同时参与冲突\n- 每次选择都要体现代价"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 少感叹，多生存细节\n- 多写断供、转移、庇护、争粮、守夜、发热"
+        },
+        {
+          "title": "叙事指导",
+          "content": "环境压力必须和人际压力同步升级，不能只写打怪或只写人性鸡汤。"
+        }
+      ],
+      "outline_bias": [
+        "阶段设计优先围绕‘灾变升级→补给紧缩→队伍分裂/重组→庇护点危机’展开。",
+        "分集大纲要频繁体现资源变化、队伍秩序变化、庇护点变化，而不是纯说明世界。",
+        "如果命中重生/囤货引擎，要让先知优势尽快兑现，不要拖很久才第一次爽。"
+      ],
+      "setting_tags": ["apocalypse_zombie", "apocalypse_extreme_cold", "apocalypse_flood", "apocalypse_mutant_beast"],
+      "engine_tags": ["resource_hoarding", "survival_trial", "rebirth_foreknowledge"],
+      "relationship_tags": ["family_betrayal", "alliance_flip", "protector_dynamic"],
+      "hybrid_with": ["rebirth_transmigration", "system_powerup"]
+    },
+    "xianxia_fantasy": {
+      "display_name": "修仙玄幻",
+      "id": "xianxia_fantasy",
+      "aliases": ["修仙", "仙侠", "玄幻修行", "宗门修仙"],
+      "keywords": ["修仙", "仙门", "灵根", "渡劫", "飞升", "宗门", "秘境", "法宝", "丹药"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": false,
+        "prefers_logic_trial": true,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": false
+      },
+      "frontmatter": {
+        "name": "修仙玄幻",
+        "chapterTypes": ["入局场", "试炼场", "资源争夺场", "宗门站队场", "突破留钩场"],
+        "fatigueWords": ["天赋异禀", "逆天改命", "心神一震", "恐怖如斯", "气息暴涨", "举世震惊"],
+        "pacingRule": "前段必须尽快给出修行体系或阶层压迫；每集至少体现修为、资源、宗门地位、秘境风险或人脉站位中的一种变化；不能连续多集只有讲设定。",
+        "satisfactionTypes": ["突破打脸", "夺宝反杀", "宗门改口", "师门护短", "秘境翻盘", "旧仇兑现"],
+        "openingRule": "前段必须让观众看见修行世界的等级差或资源压迫。",
+        "endingHookRule": "结尾优先留在突破前夜、秘境开启、宗门改口、法宝将现、师徒翻脸、天劫将至的瞬间。",
+        "protagonistPressureType": "修为压制、资源垄断、宗门排斥、血脉/灵根歧视、试炼风险、旧仇追杀。",
+        "commonFailureModes": ["全在讲体系", "升级没有代价", "每集都只是修炼", "反派只有嘴炮", "战力和资源不联动"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 修行体系只会堆名词，没有真正进入冲突\n- 升级像流水账，一关一关念过去，没有代价和选择\n- 宗门、师门、家族只是背景板，不参与站队与压迫\n- 法宝、丹药、秘境只负责掉宝，不负责制造风险和博弈\n- 主角一直赢，没有走火、错判、代价或资源短缺\n\n## 体系铁律\n\n- 修为、资源、关系、机缘必须形成连续链条\n- 每次突破最好都来自先前铺垫：资源、心境、试炼、外压、错误修正\n- 宗门/家族/师徒关系必须是冲突来源，而不只是设定名词\n- 爽点不只是突破本身，而是突破后谁改口、谁让位、谁翻脸、谁怕了\n\n## 语言铁律\n\n- 少空喊‘逆天’，多写修行代价、身体反应、规则限制、现场压制\n- 重要资源要可视化：丹药、法器、灵石、令牌、秘境资格、峰主席位\n- 对话要体现辈分、地位、试探和压制，不要所有人都像解说员\n\n## 叙事指导\n\n修仙玄幻短剧的关键不是体系有多大，而是‘压迫—争夺—突破—改口’的连续兑现。每阶段都要有具体的人和组织在压主角，也要有具体的资源和门槛拦主角。突破应该是戏剧事件，不只是等级变化。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 不要只堆设定名词\n- 不要把升级写成流水账\n- 不要让宗门和师门没有戏"
+        },
+        {
+          "title": "体系铁律",
+          "content": "- 修为、资源、关系、机缘要连起来\n- 突破必须有因果和代价"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 少喊逆天，多写限制和压迫\n- 资源和席位要可视化"
+        },
+        {
+          "title": "叙事指导",
+          "content": "真正的爽点不是升级数字，而是突破之后现场秩序发生变化。"
+        }
+      ],
+      "outline_bias": [
+        "阶段设计优先围绕‘压制→争夺资源→试炼/秘境→突破→地位改写’。",
+        "分集大纲要保证修为变化和资源变化同时存在，不要只说设定。",
+        "关键锚点应尽量落在突破、夺宝、宗门改口、师徒/同门站位变化等高记忆事件。"
+      ],
+      "setting_tags": ["cultivation_world"],
+      "engine_tags": ["cultivation_breakthrough", "profession_awaken", "identity_reveal"],
+      "relationship_tags": ["master_disciple_tension", "alliance_flip", "status_hierarchy_conflict"],
+      "hybrid_with": ["supernatural_urban", "rebirth_transmigration", "modern_romance"]
+    },
+    "supernatural_urban": {
+      "display_name": "都市超凡",
+      "id": "supernatural_urban",
+      "aliases": ["都市修仙", "都市高武", "灵气复苏", "都市异能", "都市超凡"],
+      "keywords": ["都市修仙", "都市高武", "灵气复苏", "异能", "觉醒", "超凡", "都市武道", "都市仙尊"],
+      "capabilities": {
+        "uses_explicit_rules": false,
+        "requires_rule_execution_map": false,
+        "requires_visible_rule_punishment": false,
+        "has_hidden_mechanism": true,
+        "prefers_logic_trial": true,
+        "prefers_relationship_push": false,
+        "prefers_status_hierarchy_conflict": true
+      },
+      "frontmatter": {
+        "name": "都市超凡",
+        "chapterTypes": ["隐藏身份场", "压制场", "试探觉醒场", "超凡翻盘场", "双秩序冲突场"],
+        "fatigueWords": ["灵气复苏", "强者为尊", "恐怖如斯", "一拳镇压", "震惊四座", "从此无敌"],
+        "pacingRule": "前段必须尽快建立现代秩序与超凡秩序的冲突；每集至少一次力量、身份、资源、舆论或站队变化；不要连续多集只写升级或设定解释。",
+        "satisfactionTypes": ["隐藏身份打脸", "觉醒翻盘", "都市秩序反压", "超凡碾压兑现", "旧仇清算", "权力结构重排"],
+        "openingRule": "前段尽快让观众看到主角被现代秩序压着，而超凡力量或规则还没完全公开。",
+        "endingHookRule": "结尾优先留在身份将揭未揭、力量暴露、旧秩序报复、超凡组织盯上、觉醒失控的瞬间。",
+        "protagonistPressureType": "双秩序夹击：现代身份压制 + 超凡规则压制 + 资源断供 + 舆论羞辱 + 旧敌追杀。",
+        "commonFailureModes": ["只写升级", "都市部分像背景板", "超凡规则全靠解释", "一开局就完全无敌", "现代关系线全失效"]
+      },
+      "rules_block": "## 题材禁忌\n\n- 都市只是皮，实际上变成纯修仙/纯高武升级流水账\n- 超凡规则全靠口头说明，没有真正进入现代社会冲突\n- 主角一开始就无敌，现代压制和旧秩序都不再成立\n- 只写战力提升，不写身份、资源、关系和舆论层面的变化\n- 反派只有‘瞧不起主角’，没有现代权力和超凡秩序的双重压制\n\n## 双秩序铁律\n\n- 都市超凡最重要的是‘现代秩序’和‘超凡秩序’同时存在并互相摩擦\n- 力量进阶必须改变现实处境，不只是战斗力数字变化\n- 身份、资源、组织、圈层、舆论都应被超凡力量重新洗牌\n- 爽点应落在：隐藏身份曝光、旧秩序失手、超凡力量在都市场合中兑现\n\n## 语言铁律\n\n- 少讲世界观，多写双秩序冲突：公司、校园、家宴、媒体、比武、组织招募、黑市交易\n- 力量感要可见，但不要只靠夸张形容词\n- 现代场景锚点和超凡锚点要并存：会议室、天台、病房、灵石、试剂、法器、擂台、校园公告\n\n## 叙事指导\n\n都市超凡的核心不是‘主角很能打’，而是‘主角在现代秩序里被低估，在超凡秩序里又被压制，然后逐步把两边的秩序都翻过来’。每阶段都应同时推动现实关系和超凡成长，不要让任何一边彻底消失。",
+      "sections": [
+        {
+          "title": "题材禁忌",
+          "content": "- 不要只剩升级流水账\n- 不要让都市场景失去作用\n- 不要让双秩序只剩一层"
+        },
+        {
+          "title": "双秩序铁律",
+          "content": "- 现代秩序和超凡秩序必须互相摩擦\n- 力量变化必须改现实处境"
+        },
+        {
+          "title": "语言铁律",
+          "content": "- 都市场景和超凡场景都要可拍\n- 少夸张形容，多具体冲突"
+        },
+        {
+          "title": "叙事指导",
+          "content": "每阶段都要体现：现实身份如何变化，超凡层级如何变化，以及两者如何相互反噬。"
+        }
+      ],
+      "outline_bias": [
+        "阶段设计优先围绕‘现代压制→超凡试探→身份半露→双秩序冲突升级→公开翻盘’。",
+        "分集大纲要同时体现现实地位位移和超凡力量位移，不能只写其中一边。",
+        "关键锚点尽量设计成现代场景里的超凡兑现，例如家宴、校园、会议室、媒体现场中的身份/力量反转。"
+      ],
+      "setting_tags": ["modern_city", "urban_cultivation", "spiritual_revival"],
+      "engine_tags": ["cultivation_breakthrough", "profession_awaken", "identity_reveal"],
+      "relationship_tags": ["status_hierarchy_conflict", "protector_dynamic", "alliance_flip"],
+      "hybrid_with": ["urban", "xianxia_fantasy", "system_powerup"]
+    },
+    "rebirth_transmigration": {
+    "display_name": "重生穿越",
+    "id": "rebirth_transmigration",
+    "aliases": ["重生", "穿越", "穿书", "回档", "二周目", "重开一世"],
+    "keywords": ["重生", "穿越", "穿书", "回档", "前世记忆", "二周目", "重来一次", "命运改写"],
     "capabilities": {
       "uses_explicit_rules": false,
       "requires_rule_execution_map": false,
       "requires_visible_rule_punishment": false,
       "has_hidden_mechanism": true,
-      "prefers_logic_trial": false,
-      "prefers_relationship_push": false,
-      "prefers_status_hierarchy_conflict": false
+      "prefers_logic_trial": true,
+      "prefers_relationship_push": true,
+      "prefers_status_hierarchy_conflict": true
     },
-    "keywords": [
-      "恐怖",
-      "horror",
-      "中式恐怖"
-    ],
     "frontmatter": {
-      "name": "恐怖",
-      "id": "horror",
-      "chapterTypes": [
-        "异常开场",
-        "压迫场",
-        "试探场",
-        "失控场",
-        "留钩场"
-      ],
-      "fatigueWords": [
-        "毛骨悚然",
-        "不寒而栗",
-        "浑身发冷",
-        "头皮发麻",
-        "仿佛",
-        "不禁",
-        "竟然",
-        "一种莫名的恐惧"
-      ],
-      "numericalSystem": false,
-      "powerScaling": false,
-      "eraResearch": false,
-      "pacingRule": "前120字必须出现明确视觉异常；每集至少一次认知修正（原本安全处变危险）；结尾必须涉及角色生死瞬间的动作钩子",
-      "satisfactionTypes": [
-        "真相揭开一角",
-        "识破伪装者",
-        "利用规则反制",
-        "反杀危险源",
-        "找到生路"
+      "name": "重生穿越",
+      "chapterTypes": ["前世错局回闪", "提前布局场", "旧坑重临场", "先知反杀场", "命运改写留钩场"],
+      "fatigueWords": ["这一世我绝不", "前世的遗憾", "命运的齿轮", "熟悉的场景", "他比任何人都清楚未来", "老天给了我重来一次的机会"],
+      "pacingRule": "开场尽快交代主角为何拥有第二次机会，以及上一轮最大的错失或惨败；前 3 集内必须出现一次“前世踩坑→今生提前规避/反制”的明确兑现；每集至少有一次信息优势转化为行动优势，不能连续两集都只是回忆和感慨。",
+      "satisfactionTypes": ["提前截胡", "旧仇提前反杀", "关键节点改写", "看穿骗局", "抢先布局成功", "让前世仇人按原路跌进坑里"],
+      "openingRule": "前段必须迅速建立‘上一轮为什么失败’和‘这一轮最先要改什么’，不要只有模糊悔恨。",
+      "endingHookRule": "结尾优先留在主角看见前世关键节点再次逼近、提前布的局将要收网、或新的变量打乱原有记忆的瞬间。",
+      "protagonistPressureType": "上一轮失败阴影、信息过多带来的判断负担、蝴蝶效应导致的偏差、旧敌提前异动、亲近之人仍会重复背叛。",
+      "commonFailureModes": [
+        "主角只会在心里说前世如何如何，却不立即行动",
+        "重生/穿越的先知优势没有兑现成资源、关系或主动权",
+        "同一事件重来后没有明显新走法，像原剧情重复播放",
+        "所有布局都毫无代价，主角像全知全能旁观者",
+        "重生只是解释设定，不真正改变故事节奏"
       ]
     },
-    "rules_block": "## 题材禁忌\n\n- 恐怖源头刚开场就讲透\n- 禁止描写心理活动，必须转化为瞳孔震颤、屏息、指尖抠入掌心等动作\n- 主角像开挂一样冷静处理一切\n- 禁止手机因“没信号”而无法求救（太俗套），改为拨通后是自己的声音\n- 每场都只是重复害怕，没有新的危险或新的信息\n\n## 恐惧递进\n\n- 第一层：细节错位（声音、灯光、物件、熟人反应不对劲）\n- 第二层：异常被确认，安全区失效（躲进柜子但柜子后板在动）\n- 第三层：角色必须做选择，而且选错会出事\n- 第四层：原本能保命的办法彻底失效\n\n## 语言铁律\n\n- 严禁写“他很害怕”，必须写身体和动作的具体变化\n- 不要长段解释异常原理，先把异常摆在眼前\n- 台词要短，带停顿、试探和压迫，不要人人都像在做汇报\n\n## 叙事指导\n\n短剧恐怖先抓人。开场要有能拍出来的异常：监控残影、倒走的鞋、熄灭的红灯、镜子里不同步的动作。\n每场最好只做一件事：发现、确认、试错、失控、逃命。\n角色反应要像普通人，先犹豫、先不信、先找理由，逼到退无可退才会拼命。\n结尾尽量留动作钩，不要留空话钩。",
+    "rules_block": "## 题材禁忌\n\n- 重生/穿越只是一个开头设定，后面和普通爽文没有差别\n- 主角只会感慨前世遗憾，不会立刻利用信息差布局\n- 所有关键节点都被主角轻松躲过，像拿了答案，不再存在新的风险\n- 角色关系照搬上一轮，缺乏‘知道真相后如何改走法’的戏\n- 蝴蝶效应不存在，主角永远按前世记忆一路通关\n\n## 二周目铁律\n\n- 前置信息必须尽快转化为行动优势：截胡、避坑、试探、提前结盟、抢占资源、反向布饵\n- 同一事件重来，必须出现‘新选择→新代价→新局势’，不能只是重复旧剧情\n- 真正的爽点不是“我知道未来”，而是“我让未来按我想要的方向偏转”\n- 先知优势不等于无敌，信息越多，判断失误的代价也越大；必须允许偏差、变量和信息失真\n- 重生文最有力的戏，不是回忆前世，而是眼看同一场局又来了，这次我不再按原来的方式死\n\n## 语言铁律\n\n- 少写‘前世多惨’，多写‘这次我先做了什么’\n- 记忆优势要落到可拍动作：提前到场、换掉某封信、藏起某个证据、先认识某个关键人、提前撤资、提前囤药\n- 避免全知上帝视角口吻，主角只能知道前世见过的东西，不应随意知道所有幕后答案\n- 重要反转要通过现时行动和旁人反应体现，不要只靠主角自述“我早就知道”\n\n## 叙事指导\n\n重生穿越题材的核心不是设定，而是‘第二次机会如何被用掉’。每阶段都要让主角面对：旧坑是否还会再来、旧人是否还值得信、旧错误是否真的能完全改掉。最抓人的不是回忆前世，而是前世的噩梦再次来到眼前，而主角选择了另一种走法，并因此付出新的代价。",
     "sections": [
       {
         "title": "题材禁忌",
-        "content": "- 恐怖源头刚开场就讲透\n- 禁止描写心理活动，必须转化为动作描写\n- 主角像开挂一样冷静处理一切\n- 把恐怖写成血腥堆砌或说明书\n- 逻辑俗套（如：必经之路必没信号）"
+        "content": "- 不要把重生写成纯回忆解释\n- 不要让先知优势只停留在嘴上\n- 不要让二周目变成无风险通关"
       },
       {
-        "title": "恐惧递进",
-        "content": "- 第一层：细节错位（声音、灯光、物件）\n- 第二层：异常确认，安全区失效\n- 第三层：被迫选择，后果严重\n- 第四层：保命手段失效，逼近绝境"
+        "title": "二周目铁律",
+        "content": "- 信息差必须转化为行动差\n- 旧事件重来必须有新走法\n- 蝴蝶效应必须存在，不能一路照答案抄"
       },
       {
         "title": "语言铁律",
-        "content": "- 少写情绪词，多写生理反应\n- 线索必须视觉化：监控、水渍、镜子、阴影\n- 台词短促，带压迫感"
+        "content": "- 少回忆，多布局\n- 先知优势要动作化、资源化、关系化\n- 拒绝上帝视角全知腔"
       },
       {
         "title": "叙事指导",
-        "content": "恐怖要落在可拍的东西上。开场就要有视觉冲击。每集至少打破一次观众的‘安全感预期’。结尾钩子要留在‘规则改变’或‘逃生失败’的瞬间。"
+        "content": "最好的重生戏，不是知道很多，而是看着同一场灾难又来了，这次主角提前动手，把局势掰弯。"
       }
-    ]
+    ],
+    "outline_bias": [
+      "阶段设计优先围绕‘旧错再临→提前布局→局势偏转→新变量打乱→再校正’展开。",
+      "分集大纲里应频繁体现前世信息如何转化为现实动作，而不是一味解释设定。",
+      "关键锚点尽量设计成：同一事件再次到来，但这次主角选了不同走法，并因此付出新代价。"
+    ],
+    "setting_tags": ["modern_city", "historical_palace", "historical_household", "urban_cultivation"],
+    "engine_tags": ["rebirth_foreknowledge", "transmigration_identity_shift", "revenge_payback"],
+    "relationship_tags": ["family_betrayal", "alliance_flip", "romance_push_pull"],
+    "hybrid_with": ["apocalypse", "historical_power", "xianxia_fantasy", "supernatural_urban"]
   },
-  "rule_horror": {
-    "display_name": "规则怪谈",
-    "id": "rule_horror",
+
+  "system_powerup": {
+    "display_name": "系统升级",
+    "id": "system_powerup",
+    "aliases": ["系统文", "任务流", "签到流", "面板流", "金手指任务"],
+    "keywords": ["系统", "任务", "签到", "面板", "奖励", "宿主", "成就点", "新手礼包", "抹杀"],
     "capabilities": {
       "uses_explicit_rules": true,
       "requires_rule_execution_map": true,
@@ -78,223 +477,773 @@
       "has_hidden_mechanism": true,
       "prefers_logic_trial": true,
       "prefers_relationship_push": false,
-      "prefers_status_hierarchy_conflict": false
-    },
-    "keywords": [
-      "规则怪谈",
-      "无限流",
-      "副本"
-    ],
-    "frontmatter": {
-      "name": "规则怪谈",
-      "id": "rule_horror",
-      "chapterTypes": [
-        "规则抛出",
-        "试错场",
-        "误判场",
-        "反转场",
-        "逃生留钩"
-      ],
-      "fatigueWords": [
-        "毛骨悚然",
-        "诡异至极",
-        "后背发凉",
-        "他想起规则",
-        "细思极恐"
-      ],
-      "numericalSystem": false,
-      "powerScaling": false,
-      "eraResearch": false,
-      "pacingRule": "开场必须出现规则载体（纸条/告示）；每集至少推翻一条既定规则；结尾钩子留在规则条文的诡异变动上",
-      "satisfactionTypes": [
-        "识破假规则",
-        "利用规则漏洞反杀",
-        "发现隐藏的第0条规则",
-        "副本阶段通关"
-      ]
-    },
-    "rules_block": "## 题材禁忌\n\n- 规则写出来只是摆设，后面剧情根本不用它\n- 主角每次试错都不付代价，全靠脑补\n- 角色一直开会分析，不落到现场验证\n- 通关全靠临时开挂，和前面细节无关\n\n## 机制铁律\n\n- 规则至少要有两层：表层（生路）、深层（陷阱）\n- 规则最可怕的不是字，而是执行成本和误判代价\n- 规则冲突必须逼人做选择，选错就出事\n- 解法必须伏笔化：通关道具必须在前文以不起眼的日常杂物形式出现过\n\n## 语言铁律\n\n- 不要写成说明书，规则要一边跑一边验证\n- 规则通过视觉载体落地：告示牌、广播、自动打印的纸条、颜色不对的制服\n- 恐怖感来自“哪条能信”，不是来自长段渲染\n\n## 叙事指导\n\n开场要把规则抛出来。每一场尽量围着一条规则：发现、怀疑、误读、验证、推翻。\n聪明要通过记住细节、比别人先看出不对体现。结尾钩子留在规则变化上，比如多了一行字、少了一条、字迹渗血。",
-    "sections": [
-      {
-        "title": "题材禁忌",
-        "content": "- 规则无卵用\n- 规则全是真的（没有误导）\n- 无代价试错\n- 空谈不实践"
-      },
-      {
-        "title": "机制铁律",
-        "content": "- 规则分层（真、假、陷阱）\n- 规则冲突逼迫抉择\n- 伏笔回收，严禁机械降神"
-      },
-      {
-        "title": "语言铁律",
-        "content": "- 规则视觉化落地\n- 减少结论性独白，增加质疑对白"
-      },
-      {
-        "title": "叙事指导",
-        "content": "规则怪谈核心是逻辑博弈。安全区必须是暂时的。结尾动作钩子要强。"
-      }
-    ]
-  },
-  "urban": {
-    "display_name": "都市",
-    "id": "urban",
-    "capabilities": {
-      "uses_explicit_rules": false,
-      "requires_rule_execution_map": false,
-      "requires_visible_rule_punishment": false,
-      "has_hidden_mechanism": false,
-      "prefers_logic_trial": false,
-      "prefers_relationship_push": false,
       "prefers_status_hierarchy_conflict": true
     },
-    "keywords": [
-      "都市",
-      "urban",
-      "逆袭"
-    ],
     "frontmatter": {
-      "name": "都市",
-      "id": "urban",
-      "chapterTypes": [
-        "压制场",
-        "博弈场",
-        "翻盘场",
-        "站队场",
-        "留钩场"
-      ],
-      "fatigueWords": [
-        "冷笑",
-        "震惊",
-        "深吸一口气",
-        "竟然就是",
-        "由于",
-        "区区一个"
-      ],
-      "numericalSystem": false,
-      "powerScaling": false,
-      "eraResearch": true,
-      "pacingRule": "开场要有明确阶级压制；每集至少出现一次资源变动或关键人物站队；不能连续两集只有铺垫没有兑现",
-      "satisfactionTypes": [
-        "身份反转打脸",
-        "对手破产吃瘪",
-        "顶级资源兑现",
-        "地位反转"
+      "name": "系统升级",
+      "chapterTypes": ["任务发布场", "任务执行场", "奖励兑现场", "惩罚逼迫场", "系统升级留钩场"],
+      "fatigueWords": ["叮！系统提示", "宿主请注意", "不可思议的奖励", "抹杀", "恭喜宿主", "系统机械音响起"],
+      "pacingRule": "开场尽快建立系统规则与主角现实困境的绑定关系；前 3 集内必须有至少一次任务完成并兑现现实收益；每集至少出现一次系统规则对现实关系、资源或身份的影响；不能连续两集都只发布任务不兑现后果。",
+      "satisfactionTypes": ["奖励立刻兑现", "系统任务反杀现实压制", "隐藏奖励触发", "等级/权限升级", "系统规则被反向利用", "靠任务完成现实翻盘"],
+      "openingRule": "前段必须尽快说明系统为什么出现在主角身上，以及它解决或放大了什么现实困局。",
+      "endingHookRule": "结尾优先留在新任务发布、奖励将发未发、惩罚倒计时、系统升级解锁、或隐藏条件即将触发的瞬间。",
+      "protagonistPressureType": "任务时限、失败惩罚、奖励诱惑、系统规则不完整、现实困局与系统任务冲突、系统升级带来更高难度。",
+      "commonFailureModes": [
+        "系统像保姆，直接给正确答案",
+        "奖励只报名字，后面不兑现",
+        "任务和主线毫无关系，像刷日常",
+        "惩罚只有嘴上说很严重，实际没有压力",
+        "系统规则前后不一致，随剧情任意改判"
       ]
     },
-    "rules_block": "## 题材禁忌\n\n- 对手像木头，只负责挨打脸，没有任何反击逻辑\n- 关键问题全靠“一个电话”解决（无代价交换）\n- 职场、商业规则完全不顾，写成玄幻式战力碾压\n- 爽点只靠嘴喊，没有现场画面反应\n\n## 现实约束\n\n- 资源不是凭空来的，要看见代价、交换或关系来源\n- 爽点转化：不要写“大家都怕他”，写“原本坐着的人全部起立，主座的人主动让位”\n- 合同、职位、权限要基本说得通\n\n## 语言铁律\n\n- 少写分析，多写试探、压人、翻脸、站队\n- 台词要像现实中的较劲，短、沉、带刺，不要像商学院案例复盘\n- 视觉锚点：黑金卡、定制西装袖扣、颤抖的合同、变换的座位顺序\n\n## 叙事指导\n\n核心是压制和翻盘。开场给出不平等：被羞辱、被截胡、被背叛。\n每一场落到具体画面：饭局、会议室、签约现场、停车场。\n人物关系不是摆设，谁站哪边、谁沉默、谁改口，都是戏。",
+    "rules_block": "## 题材禁忌\n\n- 系统只是个播报器，任务对现实主线没有真正影响\n- 奖励出现后一两集就被遗忘，没有进入资源、身份、战力或关系链条\n- 惩罚看似严重，实际上主角从不真正受伤、失去或被逼到墙角\n- 任务设置像刷清单，与主角核心冲突（复仇、求生、上位、翻盘）脱节\n- 系统为了服务剧情临时加规则、删规则，导致逻辑失控\n\n## 系统铁律\n\n- 系统任务必须和现实主线强绑定：完成任务要改变主角当前最痛的困局，而不是提供边角料福利\n- 奖励必须兑现：拿到的能力、道具、权限、信息、资源，要在后续剧情里真正被使用和回收\n- 惩罚必须可见：失败就要失去时间、机会、资源、健康、关系或安全，不可空喊抹杀\n- 系统不能替主角思考，只能给约束、给目标、给诱惑；真正完成任务还是要靠主角自己行动\n- 难度必须递增：前期是会不会做，中期是来不来得及，后期是做了也要付代价\n\n## 语言铁律\n\n- 少写系统播报，多写主角被任务逼着立刻做选择\n- 奖励要可拍：权限卡、药剂、面板解锁、地图、隐藏身份、临时增幅，而不是抽象属性点\n- 惩罚也要可拍：倒计时、疼痛、资源清零、权限冻结、关系断裂、现实失控\n- 不要把系统写成聊天机器人，保持压迫感和规则感\n\n## 叙事指导\n\n系统流真正抓人的地方，不是‘有系统’，而是‘系统把主角推向了本来不敢做、来不及做或不能输的那一步’。每一阶段都应体现：系统规则如何改变主角的现实位置，主角又如何反向利用系统规则扩大优势。最差的系统文是保姆文，最好的系统文是高压规则下的现实翻盘文。",
     "sections": [
       {
         "title": "题材禁忌",
-        "content": "- 无逻辑翻盘\n- 降智反派\n- 机械化解决问题（一个电话搞定一切）"
+        "content": "- 不要让系统只播报不推动剧情\n- 不要让奖励发完就消失\n- 不要让惩罚永远落不到主角身上"
       },
       {
-        "title": "现实约束",
-        "content": "- 资源对等交换原则\n- 商业/职场逻辑自洽\n- 细节体现地位（座位、眼神、语气动作）"
+        "title": "系统铁律",
+        "content": "- 任务必须绑定主线困局\n- 奖励与惩罚都要兑现\n- 系统给规则，不代替主角行动"
       },
       {
         "title": "语言铁律",
-        "content": "- 动作化爽点\n- 对白短促有进攻感\n- 禁用废话转折"
+        "content": "- 少播报，多决策\n- 奖励与惩罚都要可视化\n- 系统语气保持压迫感，不要太像游戏客服"
       },
       {
         "title": "叙事指导",
-        "content": "都市戏吃关系失衡。爽点要快兑现。每一场都要有明确的功能性位移。"
+        "content": "最有效的系统戏，是任务逼着主角去做现实里最难、最痛、但最值的一件事。"
       }
-    ]
+    ],
+    "outline_bias": [
+      "阶段设计优先围绕‘系统介入→任务逼迫→奖励兑现→难度升级→规则反向利用’展开。",
+      "分集大纲里要频繁体现任务、奖励、惩罚如何改变现实局势，不要让系统停留在设定层。",
+      "关键锚点尽量设计成：主角在高压任务下被迫做选择，并用奖励/规则反杀现实压制。"
+    ],
+    "setting_tags": ["modern_city", "dungeon_copy", "spiritual_revival"],
+    "engine_tags": ["system_assignment", "profession_awaken", "identity_reveal"],
+    "relationship_tags": ["status_hierarchy_conflict", "public_face_slap"],
+    "hybrid_with": ["urban", "apocalypse", "supernatural_urban", "rebirth_transmigration"]
   },
-  "modern_romance": {
-    "display_name": "现代情感",
-    "id": "modern_romance",
+
+  "suspense_mystery": {
+    "display_name": "悬疑推理",
+    "id": "suspense_mystery",
+    "aliases": ["悬疑", "推理", "破案", "谜局", "身份谜案", "真相追查"],
+    "keywords": ["悬疑", "推理", "谜案", "线索", "反转", "真相", "凶手", "伪装", "调查"],
     "capabilities": {
       "uses_explicit_rules": false,
       "requires_rule_execution_map": false,
       "requires_visible_rule_punishment": false,
-      "has_hidden_mechanism": false,
-      "prefers_logic_trial": false,
-      "prefers_relationship_push": true,
-      "prefers_status_hierarchy_conflict": false
-    },
-    "keywords": [
-      "现代情感",
-      "先婚后爱",
-      "追妻火葬场",
-      "甜宠"
-    ],
-    "frontmatter": {
-      "name": "现代情感",
-      "id": "modern_romance",
-      "chapterTypes": [
-        "关系钩子",
-        "极致拉扯",
-        "修罗场",
-        "偏爱兑现",
-        "反转留钩"
-      ],
-      "fatigueWords": [
-        "占有欲",
-        "该死的心动",
-        "呼吸一滞",
-        "眼眶一热",
-        "心脏漏了一拍"
-      ],
-      "numericalSystem": false,
-      "powerScaling": false,
-      "eraResearch": false,
-      "pacingRule": "开场抛关系危机（误会/前任）；每集必须有一次肢体或眼神交锋；每3集一次立场大反转",
-      "satisfactionTypes": [
-        "公开护短",
-        "女主独立反击",
-        "男主后悔失控",
-        "误会拆开",
-        "关系重新站位"
-      ]
-    },
-    "rules_block": "## 题材禁忌\n\n- 严禁口头告白。爱是：推掉会议去接人、记住过敏源、在众人面前只站在她身后\n- 霸总只有控制没有付出，女主一直挨虐没有成长\n- 糖和虐像两张皮，接不上\n- 虐不是哭天喊地，是：最需要他时他关了机、明明看见了却转过头\n\n## 情感铁律\n\n- 情绪爆点必须有前面积累，不要平地起雷\n- 追妻重点不是男主惨，是女主不再轻易回头（动作细节：推开手、不看他）\n- 甜不是说情话，是偏爱、例外、维护、公开站队\n\n## 语言铁律\n\n- 少讲道理，多写反应：看、追、让、护、签、走、松手、错开身位\n- 台词要有来回、有压制，严禁抒情朗诵\n- 视觉锚点：雨中的伞、解开的领带、未接听的手机、挡酒的手、错开的机票\n\n## 叙事指导\n\n最吃关系失衡。开场把关系扔进不稳定状态：被误会、被羞辱、前任归来。\n一场戏只做一个重点：拉近、拉远、决裂、站队。\n结尾钩尽量留在关系动作上（如：门关上的瞬间，他拉住了她的手腕）。",
-    "sections": [
-      {
-        "title": "题材禁忌",
-        "content": "- 纯误会无递进\n- 油腻霸总行为\n- 女主无底线原谅"
-      },
-      {
-        "title": "情感铁律",
-        "content": "- 情绪由行动驱动\n- 拒绝廉价甜言蜜语\n- 强化独立性选择"
-      },
-      {
-        "title": "语言铁律",
-        "content": "- 动作化描写感情位移\n- 拒绝演讲式对白\n- 视觉锚点伏笔"
-      },
-      {
-        "title": "叙事指导",
-        "content": "现代情感重点在‘位移’。每一次互动都要导致关系天平的变化。结尾必留动作悬念。"
-      }
-    ]
-  },
-  "general": {
-    "display_name": "通用",
-    "id": "general",
-    "capabilities": {
-      "uses_explicit_rules": false,
-      "requires_rule_execution_map": false,
-      "requires_visible_rule_punishment": false,
-      "has_hidden_mechanism": false,
-      "prefers_logic_trial": false,
+      "has_hidden_mechanism": true,
+      "prefers_logic_trial": true,
       "prefers_relationship_push": false,
       "prefers_status_hierarchy_conflict": false
     },
-    "keywords": [
-      "通用",
-      "general"
-    ],
     "frontmatter": {
-      "source": "enhanced_v2_logic"
+      "name": "悬疑推理",
+      "chapterTypes": ["疑点抛出场", "线索试探场", "证据错位场", "认知翻转场", "真相留钩场"],
+      "fatigueWords": ["真相只有一个", "扑朔迷离", "细思极恐", "案件越来越复杂", "他突然意识到", "一切都说得通了"],
+      "pacingRule": "开场尽快抛出一个明确异常点或不合逻辑之处；每集至少一次认知修正或证据重排；不能连续两集都只是调查、讨论、开会而不推进事实状态。",
+      "satisfactionTypes": ["识破伪装", "关键证据前置回收", "误导被拆穿", "旧线索重解", "真相揭开一角", "用逻辑反压对手"],
+      "openingRule": "前段必须让观众立刻知道‘哪里不对’，而不是先讲大量背景。",
+      "endingHookRule": "结尾优先留在：新证据出现、旧证据失效、嫌疑人露破绽、主角发现自己理解错了某件事的瞬间。",
+      "protagonistPressureType": "证据不足、线索互相矛盾、误导信息增多、错误判断会害人、时间紧迫、可信对象变少。",
+      "commonFailureModes": [
+        "反转全靠作者补充说明，不可回溯",
+        "所有角色围桌分析，不做实地推进",
+        "线索前置不足，观众无法参与推理",
+        "主角突然神来一笔看透一切",
+        "悬疑只是拖延真相，不制造新的认知冲击"
+      ]
     },
-    "rules_block": "## 生产级指令\n\n- 动作描写占比必须占剧本 60% 以上，严禁纯内心独白\n- 人物行为由动机驱动，严禁为剧情强行降智或制造巧合\n- 能拍出来的东西，不要用旁白代替\n- 对白必须短，单句严禁超过 15 字，要有顶、有停、有勾\n\n## 叙事指导\n\n短剧优先事件，不优先讲述。\n每集结尾必须是‘动作未完成’或‘新危机降临’，禁止‘平着收’或‘感慨收’。\n视觉化：所有关键转折必须有一个物理载体（物件、动作、现场反应）。",
+    "rules_block": "## 题材禁忌\n\n- 线索没有前置，真相全靠最后补资料\n- 角色一边调查一边长篇解释，把悬疑写成工作汇报\n- 反转只是新消息突然出现，不是旧信息被重新理解\n- 主角像读剧本一样，突然跳到正确答案\n- 所有嫌疑人都功能化，只负责藏信息，不提供有效对抗\n\n## 推理铁律\n\n- 线索必须可见、可记、可回收；观众可以没猜中，但不能觉得被骗\n- 认知修正比‘答案揭晓’更重要：最好让观众意识到自己原来理解错了某个旧细节\n- 错误判断要有代价：错抓人、错信人、错走一步，就要损失时间、证据、关系或生命安全\n- 真相应层层剥离，不宜一次讲透；每一轮揭示都应改变嫌疑结构或关系结构\n- 调查必须落地：跟踪、试探、调取、踩点、对质、设局，而不只是开会分析\n\n## 语言铁律\n\n- 少写抽象“谜团”，多写具体疑点：时间对不上、物件位置不对、证词前后矛盾、有人知道不该知道的事\n- 线索最好有物理载体：监控、录音、票据、短信、衣物、钥匙、血迹、门禁记录、旧照片\n- 对话应带试探、挖坑、半真半假，不要人人都像逻辑老师\n\n## 叙事指导\n\n悬疑推理短剧最重要的不是‘案子多复杂’，而是‘每一轮理解都被重新洗牌’。每阶段都应让观众重新判断：谁在撒谎、哪条证据有问题、谁原本不是敌人却突然变成了风险。结尾钩子尽量留在认知被打翻的瞬间，而不是平铺式总结。",
     "sections": [
       {
-        "title": "全局禁忌",
-        "content": "- 无逻辑巧合推动剧情\n- 配角降智配合主角\n- 只有解释没有推进\n- 无铺垫的高潮"
+        "title": "题材禁忌",
+        "content": "- 不要天降证据\n- 不要全靠分析会推进\n- 不要让主角像开天眼一样瞬间破案"
       },
       {
-        "title": "动作准则",
-        "content": "- 动作驱动情绪\n- 视觉锚点优先\n- 拒绝说明书式对白"
+        "title": "推理铁律",
+        "content": "- 线索必须前置且可回收\n- 反转要来自旧证据重排\n- 错判必须有代价"
+      },
+      {
+        "title": "语言铁律",
+        "content": "- 少说谜团，多写疑点\n- 线索要物理化\n- 对话要有试探和遮掩"
+      },
+      {
+        "title": "叙事指导",
+        "content": "真正抓人的不是答案，而是你以为自己看懂了，下一秒发现旧理解全错了。"
       }
-    ]
+    ],
+    "outline_bias": [
+      "阶段设计优先围绕‘疑点抛出→线索积累→错误理解被推翻→嫌疑结构重排→真相逼近’展开。",
+      "分集大纲要保证每集至少一次认知修正，不要只有调查流程。",
+      "关键锚点尽量设计成：旧证据被重新理解、可信对象变得可疑、主角因误判付出代价。"
+    ],
+    "setting_tags": ["modern_city", "workplace_city", "historical_household"],
+    "engine_tags": ["survival_trial", "identity_reveal", "weird_rule_exploit"],
+    "relationship_tags": ["alliance_flip", "trust_collapse"],
+    "hybrid_with": ["rule_horror", "urban", "historical_power", "horror"]
+  },
+
+  "historical_power": {
+    "display_name": "古代权谋",
+    "id": "historical_power",
+    "aliases": ["古言权谋", "宫斗", "宅斗", "朝堂", "高门权谋", "后宅争权"],
+    "keywords": ["权谋", "宫斗", "宅斗", "朝堂", "嫡庶", "世家", "礼法", "门第", "赐婚", "册封"],
+    "capabilities": {
+      "uses_explicit_rules": false,
+      "requires_rule_execution_map": false,
+      "requires_visible_rule_punishment": false,
+      "has_hidden_mechanism": true,
+      "prefers_logic_trial": true,
+      "prefers_relationship_push": true,
+      "prefers_status_hierarchy_conflict": true
+    },
+    "frontmatter": {
+      "name": "古代权谋",
+      "chapterTypes": ["礼法压制场", "家宴/朝局发难场", "暗线试探场", "站队改口场", "名分反转留钩场"],
+      "fatigueWords": ["风云诡谲", "步步为营", "机关算尽", "棋逢对手", "深宅大院暗流涌动", "朝堂风波再起"],
+      "pacingRule": "开场尽快建立礼法、门第、嫡庶或朝局中的不平等压制；每集至少一次名分、话语权、座次、婚约、财权或派系立场的变化；不能连续两集都只是密谋与分析而无公开秩序位移。",
+      "satisfactionTypes": ["当众改口", "礼法反制", "夺回名分", "逼中立派表态", "婚约/继承权逆转", "仇家在礼法场合失势"],
+      "openingRule": "前段必须让观众看见一条古代秩序如何压在主角头上：座次、称呼、礼节、婚约、家法、圣意中的至少一种。",
+      "endingHookRule": "结尾优先留在：宴席将发难、赐婚将下、祠堂将审、圣旨将到、主角掌握了某个足以撬动名分的证据的瞬间。",
+      "protagonistPressureType": "礼法压制、门第歧视、嫡庶秩序、婚约捆绑、朝堂派系、家法惩戒、名分不正。",
+      "commonFailureModes": [
+        "权谋全靠嘴说布局，没有可拍的礼法场景",
+        "翻盘只靠男主/贵人一句话，不靠名分、证据、站队或礼法漏洞",
+        "所有角色都像现代人说话，缺乏秩序感",
+        "家族/宫廷秩序只是背景板，不真正形成压制",
+        "明明是权谋题材，却没有中立派、骑墙派和被迫表态的人"
+      ]
+    },
+    "rules_block": "## 题材禁忌\n\n- 权谋只体现在角色脑内‘我在布局’，没有宴席、祠堂、婚礼、朝会、敬茶等可拍场景\n- 古代秩序被写成现代职场换皮，称呼、礼法、门第完全不起作用\n- 主角翻盘只靠一个更高位的人替他说话，没有自己抓住礼法、证据、名分漏洞\n- 所有人都站得太快，缺乏犹豫、骑墙、试探与利益权衡\n- 宅斗/宫斗只剩互相骂人，没有真实资源和秩序后果\n\n## 权谋铁律\n\n- 礼法、门第、姻亲、圣意、家法都必须是硬约束，不可一笔带过\n- 反击必须落在：谁失礼、谁僭越、谁无名分、谁证据不足、谁站错队、谁在公开秩序里被逼改口\n- 中立派比反派更重要，因为他们的沉默、偏移和表态会改变局势重量\n- 权谋的爽点不是‘我想得很远’，而是‘我让别人当众不能不按规矩办’\n- 家族与宫廷中的每一条关系都应有现实承载：嫁妆、庶出、名册、封号、账目、子嗣、婚约、圣旨、祖训\n\n## 语言铁律\n\n- 少空谈筹谋，多写礼法动作：起身、行礼、落座、敬茶、称呼、宣旨、跪、罚、封、夺、赐、逐\n- 角色说话要有尊卑、分寸、试探，不要人人都像现代辩手\n- 视觉锚点：祠堂牌位、族谱、嫁妆册、玉佩、圣旨、官印、请帖、座次、茶盏、帘后听政、刑杖\n\n## 叙事指导\n\n古代权谋短剧最重要的不是复杂设定，而是‘秩序如何压人，主角如何借秩序反压回去’。每阶段都要安排一两场公开秩序场：家宴、婚仪、朝会、祠堂、册封、探病、守灵、敬茶。最有效的翻盘不是大喊我有后台，而是让对方在自己最熟悉的礼法秩序里失足，当众失去名分、话语权或盟友。",
+    "sections": [
+      {
+        "title": "题材禁忌",
+        "content": "- 不要把权谋写成现代吵架换皮\n- 不要只在嘴上布局\n- 不要让礼法和名分不起作用"
+      },
+      {
+        "title": "权谋铁律",
+        "content": "- 礼法、门第、姻亲、家法都是硬约束\n- 反击要借规矩，不只是借人脉\n- 中立派必须被迫表态"
+      },
+      {
+        "title": "语言铁律",
+        "content": "- 多写秩序动作，少写抽象谋算\n- 对话要有尊卑、试探和留白\n- 重要资源与名分要物件化"
+      },
+      {
+        "title": "叙事指导",
+        "content": "最强的古代权谋戏，不是想了很多，而是主角把敌人拖进公开秩序场，让对方不得不照规矩输。"
+      }
+    ],
+    "outline_bias": [
+      "阶段设计优先围绕‘礼法压制→暗线布局→公开秩序发难→中立派改边→名分/权力重排’展开。",
+      "分集大纲里要频繁出现宴席、祠堂、婚仪、敬茶、朝会、探病、守灵等高压秩序场。",
+      "关键锚点尽量设计成：主角用礼法漏洞、证据或盟约，逼迫中立派在公开场合站队。"
+    ],
+    "setting_tags": ["historical_palace", "historical_household"],
+    "engine_tags": ["identity_reveal", "revenge_payback", "transmigration_identity_shift"],
+    "relationship_tags": ["family_betrayal", "alliance_flip", "contract_marriage_tension"],
+    "hybrid_with": ["rebirth_transmigration", "modern_romance", "suspense_mystery"]
+    }
+  },
+  "setting_tag_catalog": {
+    "modern_city": {
+      "display_name": "现代都市",
+      "aliases": [
+        "都市",
+        "现代城市"
+      ],
+      "keywords": [
+        "都市",
+        "城市",
+        "现代"
+      ],
+      "prompt_note": "强制要求：都市冲突必须落在现实秩序场中，例如会议室、签约桌、酒会、门禁、电梯、记者会、病房、停车场。资源变化不能抽象，必须通过合同、席位、签字权、账户冻结、媒体口风、保安态度、邀请函、门禁权限等具体载体表现。",
+      "outline_bias": [
+        "设计一场公开场景里的秩序压制：主角被剥夺发言权、资格、座位、签字权或进入权限。",
+        "设计一场现实资源的即时变化戏：合同作废、股权转移、门禁取消、媒体改口、保安拦人、合作方翻脸。",
+        "设计一场反击必须被旁人看见的戏，反转后至少一类旁观者立刻改变态度。"
+      ]
+    },
+    "school_campus": {
+      "display_name": "校园场景",
+      "aliases": [
+        "校园",
+        "学校"
+      ],
+      "keywords": [
+        "校园",
+        "学校",
+        "社团",
+        "宿舍"
+      ],
+      "prompt_note": "强制要求：校园戏的压力来自同龄人围观、成绩排名、老师/校规、流言扩散、社团归属、宿舍小团体，不要把校园写成空背景。冲突必须能迅速被看见、被议论、被放大。",
+      "outline_bias": [
+        "设计一场会被同学围观并迅速扩散的冲突，让主角的名声、关系或位置立刻受影响。",
+        "设计一场纪律、成绩、评优、社团资格、宿舍分配等制度性后果，推动下一集关系变化。",
+        "设计一场原本的小误会被流言放大，逼迫角色公开表态或当众反击。"
+      ]
+    },
+    "workplace_city": {
+      "display_name": "职场都市",
+      "aliases": [
+        "职场",
+        "商战职场"
+      ],
+      "keywords": [
+        "职场",
+        "公司",
+        "项目",
+        "合同"
+      ],
+      "prompt_note": "强制要求：职场戏必须体现组织层级、岗位权限、绩效压力和资源交换。不要只写办公室对话，必须写谁能拍板、谁能抢项目、谁能决定别人去留。",
+      "outline_bias": [
+        "设计一场项目、预算、签批权、汇报权被高位者强占或剥夺的戏。",
+        "设计一场主角短暂反击后被更高层秩序压回的戏，用来拉高后续翻盘价值。",
+        "设计一场中立同事或合作方被迫选边，直接改变项目走向。"
+      ]
+    },
+    "apocalypse_zombie": {
+      "display_name": "末世丧尸",
+      "aliases": [
+        "尸潮",
+        "丧尸"
+      ],
+      "keywords": [
+        "丧尸",
+        "尸潮",
+        "感染"
+      ],
+      "prompt_note": "强制要求：丧尸末世不能只写追逃，要把感染风险、尸群移动、防线破口、噪音诱发、补给断供一起写进去。尸潮压迫必须持续升级。",
+      "outline_bias": [
+        "设计一场尸群逼近与补给断供同时发生的双重压力场。",
+        "设计一场角色误判感染风险或低估尸群路线，导致队伍受损的戏。",
+        "设计一场守点、转移或封门的动作场，结果直接改变下一阶段安全等级。"
+      ]
+    },
+    "apocalypse_extreme_cold": {
+      "display_name": "极寒末世",
+      "aliases": [
+        "极寒",
+        "寒潮"
+      ],
+      "keywords": [
+        "极寒",
+        "寒潮",
+        "暴雪"
+      ],
+      "prompt_note": "强制要求：极寒压迫要落在热源、燃料、保暖、移动成本、冻伤、停电上，不能只靠‘很冷’渲染。温度本身就是倒计时。",
+      "outline_bias": [
+        "设计一场围绕燃料、保暖物资或热源争夺的冲突，输赢直接决定谁能撑过下一夜。",
+        "设计一场因天气和温度导致路线、交易或救援彻底失效的戏。",
+        "设计一场庇护点升级或失效的物理化表现：供暖、结冰、断电、防风层、围挡。"
+      ]
+    },
+    "apocalypse_flood": {
+      "display_name": "洪灾末世",
+      "aliases": [
+        "洪灾",
+        "洪水"
+      ],
+      "keywords": [
+        "洪水",
+        "洪灾",
+        "内涝"
+      ],
+      "prompt_note": "强制要求：洪灾末世的戏必须围绕地形变化、撤离路径、楼层高差、交通失效、物资漂失来写，不要只把洪水当背景板。",
+      "outline_bias": [
+        "设计一场撤离路线因水位变化而被迫重算的戏。",
+        "设计一场人物为了过桥、过楼道、转移老人或重要物资而产生取舍的戏。",
+        "设计一场高低地势差引发的新秩序冲突：谁占高地、谁掌船、谁决定先救谁。"
+      ]
+    },
+    "apocalypse_mutant_beast": {
+      "display_name": "变异兽末世",
+      "aliases": [
+        "变异兽",
+        "异化动物"
+      ],
+      "keywords": [
+        "变异兽",
+        "异化",
+        "怪兽",
+        "兽潮"
+      ],
+      "prompt_note": "强制要求：变异兽压迫不能只有打怪，要体现活动范围、感知方式、袭击时间、巢穴区域和人类防线变化。",
+      "outline_bias": [
+        "设计一场主角误判变异兽习性，导致防线被破的戏。",
+        "设计一场围绕猎杀、避让、诱敌或抢夺安全区的策略冲突。",
+        "设计一场环境改变或兽潮迁移，迫使队伍重建规则和路线。"
+      ]
+    },
+    "cultivation_world": {
+      "display_name": "修真世界",
+      "aliases": [
+        "修真界",
+        "仙门世界"
+      ],
+      "keywords": [
+        "修真界",
+        "宗门",
+        "秘境",
+        "灵脉"
+      ],
+      "prompt_note": "强制要求：修真世界不能只写境界，要把宗门秩序、资源门槛、秘境资格、法宝丹药、门规师承同时写进冲突。",
+      "outline_bias": [
+        "设计一场围绕宗门资格、秘境名额、丹药法宝的争夺戏。",
+        "设计一场主角在修真秩序场中被压制，再靠试炼或资源翻局的戏。",
+        "设计一场门规、师承或宗门派系影响当前冲突走向的戏。"
+      ]
+    },
+    "urban_cultivation": {
+      "display_name": "都市修行",
+      "aliases": [
+        "都市修仙",
+        "都市修武"
+      ],
+      "keywords": [
+        "都市修仙",
+        "都市高武",
+        "都市修武"
+      ],
+      "prompt_note": "强制要求：现代秩序和修行秩序必须同时存在。不要只剩修炼升级，要让现代资源、身份、组织与修行体系持续碰撞。",
+      "outline_bias": [
+        "设计一场现代高压场景里的修行能力兑现，直接改变现实秩序。",
+        "设计一场主角同时被现代规则和修行圈层压制，不得不两边周旋的戏。",
+        "设计一场凡俗高位者因超凡兑现而重新评估身份和资源分配的戏。"
+      ]
+    },
+    "spiritual_revival": {
+      "display_name": "灵气复苏",
+      "aliases": [
+        "灵气复苏",
+        "超凡复苏"
+      ],
+      "keywords": [
+        "灵气复苏",
+        "复苏",
+        "灵潮"
+      ],
+      "prompt_note": "强制要求：灵气复苏不是背景设定，而是旧秩序不断失效、新秩序不断争夺的过程。要写规则重排，而不是只写主角变强。",
+      "outline_bias": [
+        "设计一场旧秩序手段失效、新秩序规则接管现场的戏。",
+        "设计一场不同群体围绕觉醒、资源点、管理权或解释权展开争夺的戏。",
+        "设计一场主角提前看见复苏后果，并借此改变现实位置的戏。"
+      ]
+    },
+    "dungeon_copy": {
+      "display_name": "副本空间",
+      "aliases": [
+        "副本",
+        "秘境副本"
+      ],
+      "keywords": [
+        "副本",
+        "秘境",
+        "关卡"
+      ],
+      "prompt_note": "强制要求：副本不是换景打怪，必须有阶段目标、规则压力、路线取舍和退出/通关代价。空间本身要有行为约束。",
+      "outline_bias": [
+        "设计一场副本规则或地形强迫角色二选一的戏。",
+        "设计一场原本安全的副本区域突然失效，迫使队伍换路的戏。",
+        "设计一场通过观察空间规律反向利用副本，而不是硬莽通关的戏。"
+      ]
+    },
+    "historical_palace": {
+      "display_name": "宫廷权场",
+      "aliases": [
+        "宫廷",
+        "宫斗"
+      ],
+      "keywords": [
+        "宫廷",
+        "后宫",
+        "朝局",
+        "册封",
+        "圣旨"
+      ],
+      "prompt_note": "强制要求：宫廷冲突必须通过礼法、尊卑、座次、称呼、发言顺序、赐婚、册封、宣旨等公开秩序来表现，不能只靠私下密谋和互骂。主角的反击也必须借秩序反压，而不是纯靠后台发话。",
+      "outline_bias": [
+        "设计一场宴席、请安、祭礼、册封或宣旨场上的公开发难，冲突要通过行礼、站位、称呼或座次表现。",
+        "设计一场原本想骑墙的人，被迫在宫廷秩序场中公开表态的戏。",
+        "设计一场主角借对方礼法失误、僭越或名分漏洞，在众目睽睽下反压回去。"
+      ]
+    },
+    "historical_household": {
+      "display_name": "家族宅门",
+      "aliases": [
+        "宅斗",
+        "家族"
+      ],
+      "keywords": [
+        "宅斗",
+        "家族",
+        "嫡庶",
+        "嫁妆",
+        "族谱",
+        "祠堂"
+      ],
+      "prompt_note": "强制要求：后宅冲突必须围绕嫡庶、掌家权、嫁妆、账目、子嗣、婚约、祠堂名分、家法处置来展开。不要写成现代家庭吵架换皮。",
+      "outline_bias": [
+        "设计一场围绕祠堂、敬茶、嫁妆册、账本、掌家钥匙的公开冲突。",
+        "设计一场高位家族成员因名分或证据不足，在长辈面前被迫改口的戏。",
+        "设计一场主角利用姻亲、家法流程或嫡庶规矩，逼迫中立亲族站队。"
+      ]
+    }
+  },
+  "engine_tag_catalog": {
+    "rebirth_foreknowledge": {
+      "display_name": "先知优势",
+      "aliases": [
+        "前世信息差",
+        "先知"
+      ],
+      "keywords": [
+        "前世记忆",
+        "先知",
+        "提前知道"
+      ],
+      "prompt_note": "强制要求：先知优势必须尽快转化为现实行动优势，例如提前截胡、避坑、结盟、囤货、撤资、换路线，不要只让主角在脑子里感慨自己知道未来。",
+      "outline_bias": [
+        "设计一场主角利用前置信息提前改变局势的戏，而不是事后感叹。",
+        "设计一场同一事件再次到来，但主角用不同走法改写结果的戏。",
+        "设计一场信息优势失灵或出现偏差，迫使主角重新判断的戏。"
+      ]
+    },
+    "transmigration_identity_shift": {
+      "display_name": "身份错位",
+      "aliases": [
+        "穿书身份",
+        "换壳"
+      ],
+      "keywords": [
+        "穿书",
+        "穿越身份",
+        "冒名",
+        "替身"
+      ],
+      "prompt_note": "强制要求：身份错位必须持续影响关系、资源和规则，不要只是一句‘我穿成了谁’。新的身份会带来新的限制、旧债和新机会。",
+      "outline_bias": [
+        "设计一场旧身份包袱反噬到主角头上的戏。",
+        "设计一场主角借新身份权限做事，却也因此被旧关系拖住的戏。",
+        "设计一场身份错位带来的资源机会与致命风险同时出现。"
+      ]
+    },
+    "system_assignment": {
+      "display_name": "系统任务",
+      "aliases": [
+        "任务流",
+        "系统任务"
+      ],
+      "keywords": [
+        "任务",
+        "系统",
+        "签到",
+        "面板"
+      ],
+      "prompt_note": "强制要求：系统任务必须与主线困局强绑定。任务不是清单，而是逼主角去做现实中最难、最痛、最值的一步；奖励和惩罚都必须兑现。",
+      "outline_bias": [
+        "设计一场系统任务逼主角立刻做危险选择的戏。",
+        "设计一场奖励兑现后直接改变现实困局的戏。",
+        "设计一场任务失败或将失败时，惩罚真实压到主角头上的戏。"
+      ]
+    },
+    "resource_hoarding": {
+      "display_name": "囤货经营",
+      "aliases": [
+        "囤货"
+      ],
+      "keywords": [
+        "囤货",
+        "物资",
+        "仓库"
+      ],
+      "prompt_note": "强制要求：囤货必须形成闭环——获取、储备、消耗、被觊觎、被兑换、被防守。资源不能只写成库存数字，必须写成生活质量、队伍权力、他人嫉妒和冲突来源。",
+      "outline_bias": [
+        "设计一场围绕具体紧缺物资的争夺，争夺结果必须直接改变下一阶段生存条件。",
+        "设计一场外界断供而主角储备兑现的对照场，逼出嫉妒、投靠或掠夺。",
+        "设计一场主角为了守住补给线，不得不牺牲其他利益的取舍戏。"
+      ]
+    },
+    "survival_trial": {
+      "display_name": "生存试炼",
+      "aliases": [
+        "试炼"
+      ],
+      "keywords": [
+        "试炼",
+        "生存",
+        "闯关"
+      ],
+      "prompt_note": "强制要求：每轮试炼都必须带来新的约束、新的代价或新的错误空间，不能只是难度数字提升。错误选择要尽量当场兑现后果。",
+      "outline_bias": [
+        "设计一轮试炼，让角色必须在牺牲别人保全自己和冒险合作之间做选择。",
+        "设计一轮试炼，上一轮安全的做法在这一轮变成陷阱。",
+        "设计一轮试炼，错误判断必须造成可见损失：掉队、受伤、失去道具、失去路线、失去信任。"
+      ]
+    },
+    "cultivation_breakthrough": {
+      "display_name": "修行突破",
+      "aliases": [
+        "突破",
+        "进阶"
+      ],
+      "keywords": [
+        "突破",
+        "进阶",
+        "渡劫",
+        "觉醒"
+      ],
+      "prompt_note": "强制要求：突破不是数字变化，而是代价、资源、心境、外压共同作用的结果。突破后必须立刻引发地位、关系或秩序变化。",
+      "outline_bias": [
+        "设计一场突破前资源和心境都被压到极限的戏。",
+        "设计一场突破后现场秩序立刻重排，原本压制者被迫改口的戏。",
+        "设计一场突破成功却伴随新代价、新追杀或新仇链的戏。"
+      ]
+    },
+    "profession_awaken": {
+      "display_name": "职业觉醒",
+      "aliases": [
+        "觉醒流",
+        "职业流"
+      ],
+      "keywords": [
+        "觉醒",
+        "职业",
+        "天赋"
+      ],
+      "prompt_note": "强制要求：职业/能力觉醒必须重排主角在现有秩序里的位置，而不是只多一个技能。觉醒后应立刻引发资源、舆论、组织或敌意变化。",
+      "outline_bias": [
+        "设计一场觉醒发生在高压场景里，当场打断旧秩序判断的戏。",
+        "设计一场觉醒后吸引组织、敌人或旧势力注意的戏。",
+        "设计一场主角因为觉醒得到机会，但也因此暴露风险的戏。"
+      ]
+    },
+    "identity_reveal": {
+      "display_name": "身份揭牌",
+      "aliases": [
+        "掉马",
+        "马甲曝光"
+      ],
+      "keywords": [
+        "身份揭露",
+        "掉马",
+        "马甲"
+      ],
+      "prompt_note": "强制要求：身份揭晓不能只停留在大家震惊，必须立刻引发关系重排、资源倾斜、敌我站位变化或新风险。掉马应发生在高压场景，而不是随便聊天时被说出来。",
+      "outline_bias": [
+        "设计一场高压场景里的身份揭晓，揭晓后至少三类人物立刻改变态度：压制者、旁观者、潜在盟友。",
+        "设计一场原本踩踏主角的人，在身份揭晓后不得不当场改口、退位、让权或低头。",
+        "设计一场身份揭晓后引发新风险，而不是只有纯爽点没有反噬。"
+      ]
+    },
+    "revenge_payback": {
+      "display_name": "复仇清算",
+      "aliases": [
+        "复仇",
+        "清算"
+      ],
+      "keywords": [
+        "复仇",
+        "清算",
+        "报复"
+      ],
+      "prompt_note": "强制要求：复仇不能一次打完，必须分层推进。先夺走仇人最倚仗的东西，再推进到更高层的清算。复仇过程要让仇人挣扎、自救、反扑，而不是一拳打死就结束。",
+      "outline_bias": [
+        "设计一场先剥夺仇人最依赖的资源、关系或体面的戏，再进入下一层清算。",
+        "设计一场清算逼得仇人甩锅、求生、反咬或鱼死网破，从而拉高下一阶段冲突。",
+        "设计一场主角的复仇选择带来代价，逼他在快意和后果之间做取舍。"
+      ]
+    },
+    "weird_rule_exploit": {
+      "display_name": "规则反制",
+      "aliases": [
+        "规则利用",
+        "漏洞利用"
+      ],
+      "keywords": [
+        "规则漏洞",
+        "反制",
+        "利用规则"
+      ],
+      "prompt_note": "强制要求：规则利用必须建立在前置观察、试错和代价之上，不要让主角无中生有发现完美漏洞。利用规则反制也要付出成本。",
+      "outline_bias": [
+        "设计一场主角先吃过规则误判亏，后面才反向利用漏洞翻局的戏。",
+        "设计一场规则反制成功但主角因此受伤、污染或失去道具的戏。",
+        "设计一场表面正确的规则其实是陷阱，逼主角换角度理解的戏。"
+      ]
+    }
+  },
+  "relationship_tag_catalog": {
+    "romance_push_pull": {
+      "display_name": "情感拉扯",
+      "aliases": [
+        "暧昧拉扯"
+      ],
+      "keywords": [
+        "拉扯",
+        "暧昧",
+        "心动",
+        "情感",
+        "恋爱"
+      ],
+      "prompt_note": "强制要求：情感推进必须依赖动作、选择和站位变化，不能只靠长对白和内心戏。每次推进最好只做一个关系动作，不要一集里又误会又和好又表白。",
+      "outline_bias": [
+        "设计一场两人立场相左却不得不靠近的戏，靠动作而不是表白推进关系。",
+        "设计一场公开场合里的维护、错过、推开、拦下或偏爱，让关系天平明显倾斜。",
+        "设计一场关系干扰，必须切中两人真正的信任盲区，而不是低级挑拨。"
+      ]
+    },
+    "alliance_flip": {
+      "display_name": "站队翻转",
+      "aliases": [
+        "站队变化",
+        "倒戈"
+      ],
+      "keywords": [
+        "站队",
+        "倒戈",
+        "改边",
+        "反水"
+      ],
+      "prompt_note": "强制要求：站队变化不能轻飘飘发生，必须有利益、恐惧、情感、证据或秩序压力作支撑。改边后要立刻改变局势重量。",
+      "outline_bias": [
+        "设计一场原本骑墙的人因高压场景被迫表态的戏。",
+        "设计一场一个关键角色的改边直接改变资源、舆论或安全局势的戏。",
+        "设计一场主角判断错站队对象，导致短期反噬的戏。"
+      ]
+    },
+    "family_betrayal": {
+      "display_name": "家庭背叛",
+      "aliases": [
+        "亲缘背刺"
+      ],
+      "keywords": [
+        "背叛",
+        "亲人",
+        "家人"
+      ],
+      "prompt_note": "强制要求：家庭背叛必须建立在长期利益、偏爱、资源分配、旧怨或生存压力基础上，不能突然翻脸。背叛之后必须引发关系断裂和秩序后果。",
+      "outline_bias": [
+        "设计一场亲缘关系在利益、生存或资源压力下被迫撕裂的戏。",
+        "设计一场主角原本愿意相信家人，但一个具体动作或证据让他彻底改判断的戏。",
+        "设计一场背叛后的连锁后果：关系断裂、队伍分裂、资源转移或名分变化。"
+      ]
+    },
+    "protector_dynamic": {
+      "display_name": "保护者关系",
+      "aliases": [
+        "保护欲",
+        "守护关系"
+      ],
+      "keywords": [
+        "保护",
+        "守护",
+        "挡在前面"
+      ],
+      "prompt_note": "强制要求：保护关系不能只是嘴上说要护着，而要通过挡风险、担后果、替对方做困难决定来兑现。保护也会制造控制与误解。",
+      "outline_bias": [
+        "设计一场角色主动替另一人承担现实后果的戏。",
+        "设计一场保护行为反而引发误会、控制感或关系裂口的戏。",
+        "设计一场主角必须在保护某人和达成更大利益之间做选择的戏。"
+      ]
+    },
+    "status_hierarchy_conflict": {
+      "display_name": "阶层冲突",
+      "aliases": [
+        "地位压制"
+      ],
+      "keywords": [
+        "地位",
+        "阶层",
+        "压制",
+        "座位",
+        "权限"
+      ],
+      "prompt_note": "强制要求：阶层冲突必须体现在公共场景与制度规则中，要让观众看见谁有资格坐、谁能说话、谁能签字、谁能决定别人命运。",
+      "outline_bias": [
+        "设计一场高位者强占主角资源、位置、发言权或资格的戏。",
+        "设计一场反击，让压制者当场失去一种核心权限、支持、体面或规则保护。",
+        "设计一场旁观者原本沉默，但因秩序变化被迫站队改口的戏。"
+      ]
+    },
+    "public_face_slap": {
+      "display_name": "公开打脸",
+      "aliases": [
+        "打脸"
+      ],
+      "keywords": [
+        "打脸",
+        "公开反转",
+        "当众"
+      ],
+      "prompt_note": "强制要求：公开打脸必须有见证人、有秩序场、有后续影响。不是一句狠话，而是现场态度、权力、位置、资源都被改写。",
+      "outline_bias": [
+        "设计一场原本羞辱主角的公共场合，最终秩序被当场翻过来的戏。",
+        "设计一场围观者态度大规模转向，放大打脸后果的戏。",
+        "设计一场打脸后反派仍试图自救或反扑，避免爽点太轻。"
+      ]
+    },
+    "trust_collapse": {
+      "display_name": "信任崩塌",
+      "aliases": [
+        "信任破裂"
+      ],
+      "keywords": [
+        "信任",
+        "怀疑",
+        "破裂"
+      ],
+      "prompt_note": "强制要求：信任崩塌必须通过证据、行为或被看见的站位变化触发，不能靠角色突然说一句‘我不信你了’。崩塌后必须立刻改变行动与关系结构。",
+      "outline_bias": [
+        "设计一场原本最可信的人出现违反常理或违反承诺行为的戏。",
+        "设计一场证据链或现场目击迫使角色关系当场断裂的戏。",
+        "设计一场信任崩塌后，主角不得不重新分配资源、路线、合作对象的后续动作。"
+      ]
+    },
+    "master_disciple_tension": {
+      "display_name": "师徒张力",
+      "aliases": [
+        "师徒关系"
+      ],
+      "keywords": [
+        "师徒",
+        "师尊",
+        "弟子"
+      ],
+      "prompt_note": "强制要求：师徒关系既要有传承，也要有权威、偏爱、隐瞒和试探。不要把师徒写成单纯温情或单纯工具关系。",
+      "outline_bias": [
+        "设计一场师徒之间因隐瞒真相、资源分配或规则不同而产生裂口的戏。",
+        "设计一场师尊/导师的维护行为引发旁人嫉恨或误判的戏。",
+        "设计一场弟子成长到足以动摇旧权威关系的戏。"
+      ]
+    },
+    "contract_marriage_tension": {
+      "display_name": "契约婚姻张力",
+      "aliases": [
+        "契约婚姻",
+        "先婚后爱"
+      ],
+      "keywords": [
+        "契约婚姻",
+        "契约",
+        "结婚协议"
+      ],
+      "prompt_note": "强制要求：契约关系必须不断和真实情感、利益边界、公开身份冲突发生摩擦。合同不是背景，而是冲突装置。",
+      "outline_bias": [
+        "设计一场契约条款在公开场合被触发，逼角色表演关系或暴露裂口的戏。",
+        "设计一场一方想守契约边界，另一方却因现实后果不得不越界的戏。",
+        "设计一场契约原本保护关系，后来反而变成束缚或羞辱来源的戏。"
+      ]
+    }
+  },
+  "general_fallback": {
+    "primary_genre": "general",
+    "setting_tags": [],
+    "engine_tags": [],
+    "relationship_tags": [],
+    "rules_block": "无法高置信识别题材时，按通用短剧规则执行：动作驱动、冲突可视、结尾留钩。"
   }
 }

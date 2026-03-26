@@ -42,7 +42,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .carry_registry import build_empty_shell, load_registry
 from .carry_structured_refresh import _iter_episode_dirs
 from .gate_artifacts import build_gate_trend_summary, load_gate_artifact
-from .genre_rules import get_genre_capabilities
+from .genre_rules import get_bundle_capabilities, get_primary_genre_capabilities
 from .run_series import _episode_json_paths, resolve_series_paths
 from .studio_operations import _promise_row_manual_override
 
@@ -885,8 +885,24 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
 
     si = registry.get("series_identity") or {}
     genre_key = str(si.get("genre_key") or "")
+    primary_genre = str(si.get("primary_genre") or genre_key or "general")
+    setting_tags = si.get("setting_tags") if isinstance(si.get("setting_tags"), list) else []
+    engine_tags = si.get("engine_tags") if isinstance(si.get("engine_tags"), list) else []
+    relationship_tags = (
+        si.get("relationship_tags") if isinstance(si.get("relationship_tags"), list) else []
+    )
     display_title = str(si.get("display_title") or _series_title(paths))
-    capabilities = get_genre_capabilities(genre_key or "general")
+    if setting_tags or engine_tags or relationship_tags:
+        capabilities = get_bundle_capabilities(
+            {
+                "primary_genre": primary_genre,
+                "setting_tags": setting_tags,
+                "engine_tags": engine_tags,
+                "relationship_tags": relationship_tags,
+            }
+        )
+    else:
+        capabilities = get_primary_genre_capabilities(primary_genre or "general")
 
     sync_meta = registry.get("sync_meta") or {}
     st = registry.get("story_thrust") or {}
@@ -1057,6 +1073,20 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
         "layout": layout,
         "display_title": display_title,
         "genre_key": genre_key,
+        "primary_genre": primary_genre,
+        "setting_tags": setting_tags,
+        "engine_tags": engine_tags,
+        "relationship_tags": relationship_tags,
+        "bundle_source": si.get("bundle_source"),
+        "resolved_alias_hits": si.get("resolved_alias_hits")
+        if isinstance(si.get("resolved_alias_hits"), list)
+        else [],
+        "primary_resolution_trace": si.get("primary_resolution_trace"),
+        "genre_confidence": si.get("confidence"),
+        "setup_primary_genre": si.get("setup_primary_genre"),
+        "final_primary_genre": si.get("final_primary_genre"),
+        "initial_vs_final_changed": si.get("initial_vs_final_changed"),
+        "initial_bundle_summary": si.get("initial_bundle_summary"),
         "capabilities": capabilities,
         "planned_episodes_from_outline": planned_episodes,
         "episode_directories_scanned": episode_dir_count,

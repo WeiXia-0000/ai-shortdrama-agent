@@ -135,6 +135,39 @@ def _run_query_carry_slice(series_dir: Path, slice_name: Optional[str]) -> Any:
     return reg.get(slice_name)
 
 
+def _run_query_genre_bundle(series_dir: Path) -> Dict[str, Any]:
+    paths = resolve_series_paths(series_dir)
+    reg_path = paths["production_carry_registry"]
+    if not reg_path.exists():
+        return {
+            "series_dir": str(series_dir),
+            "error": "production_carry_registry 不存在",
+            "registry_path": str(reg_path),
+        }
+    reg = load_registry(reg_path)
+    si = reg.get("series_identity") or {}
+    return {
+        "series_dir": str(series_dir),
+        "registry_path": str(reg_path),
+        "primary_genre": si.get("primary_genre"),
+        "final_primary_genre": si.get("final_primary_genre"),
+        "setup_primary_genre": si.get("setup_primary_genre"),
+        "setting_tags": si.get("setting_tags") if isinstance(si.get("setting_tags"), list) else [],
+        "engine_tags": si.get("engine_tags") if isinstance(si.get("engine_tags"), list) else [],
+        "relationship_tags": si.get("relationship_tags")
+        if isinstance(si.get("relationship_tags"), list)
+        else [],
+        "resolved_alias_hits": si.get("resolved_alias_hits")
+        if isinstance(si.get("resolved_alias_hits"), list)
+        else si.get("resolved_alias_hits"),
+        "primary_resolution_trace": si.get("primary_resolution_trace"),
+        "confidence": si.get("confidence"),
+        "bundle_source": si.get("bundle_source"),
+        "initial_vs_final_changed": si.get("initial_vs_final_changed"),
+        "initial_bundle_summary": si.get("initial_bundle_summary"),
+    }
+
+
 def _promise_row_manual_override(p: Dict[str, Any]) -> bool:
     if p.get("override_reason"):
         return True
@@ -448,6 +481,10 @@ def cmd_run(
 
     if op_id == "query.carry_slice":
         _print_json(_run_query_carry_slice(series_dir, slice_name))
+        return
+
+    if op_id == "query.genre_bundle":
+        _print_json(_run_query_genre_bundle(series_dir))
         return
 
     if op_id == "query.gate_status":

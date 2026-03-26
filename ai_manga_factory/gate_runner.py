@@ -14,17 +14,32 @@ from google.adk.sessions import InMemorySessionService
 
 from . import series_agents
 from .gate_artifacts import append_gate_entry, gate_artifact_path
+from .carry_registry import load_registry
+from .genre_rules import bundle_from_registry_series_identity, infer_genre_bundle_for_prompt
 from .run_series import (
     find_episode_dir_for_id,
     resolve_series_paths,
     _episode_json_paths,
-    _maybe_inject_genre_rules,
+    _inject_genre_prompt_for_stage,
     _run_agent_json,
 )
 
 
 def _infer_text_from_outline(outline: Dict[str, Any]) -> str:
     return (outline.get("logline") or "") + "\n" + (outline.get("overall_arc") or "")
+
+
+def _gate_genre_bundle(paths: Dict[str, Any], infer_text: str) -> Dict[str, Any]:
+    reg_p = paths.get("production_carry_registry")
+    if reg_p is not None and Path(reg_p).is_file():
+        try:
+            reg = load_registry(Path(reg_p))
+            b = bundle_from_registry_series_identity(reg.get("series_identity") or {})
+            if b and str(b.get("primary_genre") or "").strip():
+                return b
+        except (ValueError, OSError, json.JSONDecodeError, TypeError):
+            pass
+    return infer_genre_bundle_for_prompt(infer_text)
 
 
 def _default_debug_dir(series_dir: Path) -> Path:
@@ -165,6 +180,7 @@ async def run_plot_gate_standalone(
     paths = resolve_series_paths(series_dir.resolve())
     outline = json.loads(paths["series_outline"].read_text(encoding="utf-8"))
     infer_text = _infer_text_from_outline(outline)
+    gate_bundle = _gate_genre_bundle(paths, infer_text)
     ep_dir = Path(plan["episode_dir"])
     layout = str(paths.get("layout", "flat"))
     ep_files = _episode_json_paths(ep_dir, layout)
@@ -179,7 +195,7 @@ async def run_plot_gate_standalone(
         f"episode_function=\n{json.dumps(function_out, ensure_ascii=False)}\n\n"
         f"plot=\n{json.dumps(plot_out, ensure_ascii=False)}\n"
     )
-    pj_prompt = _maybe_inject_genre_rules(infer_text, pj_prompt_base)
+    pj_prompt = _inject_genre_prompt_for_stage(gate_bundle, pj_prompt_base, "gate_plot_judge")
     session_service = InMemorySessionService()
     plot_judge_out = await _run_agent_json(
         series_agents.episode_plot_judge_agent,
@@ -231,6 +247,7 @@ async def run_package_gate_standalone(
     paths = resolve_series_paths(series_dir.resolve())
     outline = json.loads(paths["series_outline"].read_text(encoding="utf-8"))
     infer_text = _infer_text_from_outline(outline)
+    gate_bundle = _gate_genre_bundle(paths, infer_text)
     ep_dir = Path(plan["episode_dir"])
     layout = str(paths.get("layout", "flat"))
     ep_files = _episode_json_paths(ep_dir, layout)
@@ -247,7 +264,7 @@ async def run_package_gate_standalone(
         f"script=\n{json.dumps(so, ensure_ascii=False)}\n\n"
         f"storyboard=\n{json.dumps(sbo, ensure_ascii=False)}\n"
     )
-    pkg_prompt = _maybe_inject_genre_rules(infer_text, pkg_prompt_base)
+    pkg_prompt = _inject_genre_prompt_for_stage(gate_bundle, pkg_prompt_base, "gate_package_judge")
     session_service = InMemorySessionService()
     package_judge_out = await _run_agent_json(
         series_agents.episode_package_judge_agent,
