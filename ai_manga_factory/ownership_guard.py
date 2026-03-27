@@ -74,7 +74,7 @@ def validate_op_for_execution(
         sn = str(slice_name)
         if sn in FORBIDDEN_REGISTRY_SLICES:
             raise PermissionError(
-                f"[{op_id}] 禁止写入切片: {sn}（MVP 冻结：story_thrust / knowledge_fence / asset_ledger）"
+                f"[{op_id}] 禁止写入切片: {sn}（MVP 冻结：story_thrust / asset_ledger）"
             )
         if sn not in allowed_reg:
             raise PermissionError(f"[{op_id}] 未授权写入 registry 切片: {sn}")

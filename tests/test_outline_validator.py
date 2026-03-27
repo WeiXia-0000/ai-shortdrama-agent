@@ -132,6 +132,36 @@ class TestOutlineValidator(unittest.TestCase):
         self.assertTrue(r["risk_flags"]["low_event_density"]["flag"])
 
 
+class TestMarketGatingHardFails(unittest.TestCase):
+    def test_total_episodes_under_30_hard_fail(self) -> None:
+        series_outline = {"episode_list": [_make_episode(i) for i in range(1, 29)]}
+        r = validate_dense_outline(series_outline)
+        self.assertFalse(r["is_pass"])
+        self.assertTrue(any("30" in x for x in r["hard_fail_reasons"]))
+
+    def test_front3_no_visible_payoff_hard_fail(self) -> None:
+        eps = []
+        for i in range(1, 31):
+            e = _make_episode(i)
+            if i <= 3:
+                e["visible_gain_type"] = "none"
+            eps.append(e)
+        r = validate_dense_outline({"episode_list": eps})
+        self.assertFalse(r["is_pass"])
+        self.assertTrue(any("前 3 集" in x for x in r["hard_fail_reasons"]))
+
+    def test_front10_bridge_ratio_over_half_hard_fail(self) -> None:
+        eps = []
+        for i in range(1, 31):
+            e = _make_episode(i)
+            if i <= 10:
+                e["bridge_episode_flag"] = True if i <= 6 else False
+            eps.append(e)
+        r = validate_dense_outline({"episode_list": eps})
+        self.assertFalse(r["is_pass"])
+        self.assertTrue(any("桥接" in x for x in r["hard_fail_reasons"]))
+
+
 class TestDenseOutlineWarningJudgeGate(unittest.TestCase):
     def test_hard_fail_should_not_trigger_judge(self) -> None:
         from ai_manga_factory.run_series import _dense_outline_warning_judge_needed

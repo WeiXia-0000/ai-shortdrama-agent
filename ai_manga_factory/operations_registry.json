@@ -323,7 +323,7 @@
       "idempotent": true,
       "batch_safe": true,
       "implemented": true,
-      "notes": "运行时校验 slice；state_touch 由 ownership_guard.validate_carry_refresh_slice_name 负责。"
+      "notes": "运行时校验 slice；state_touch 由 ownership_guard.validate_carry_refresh_slice_name 负责。knowledge_fence 可由本 op 写入（非冻结切片；冻结的是 story_thrust / asset_ledger）。"
     }
   ]
 }

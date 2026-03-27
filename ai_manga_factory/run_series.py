@@ -5,7 +5,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
 
@@ -132,6 +132,170 @@ async def _run_agent_json(
         patched = _strict_json_only(raw)
         patched = _extract_json(patched)
         return json.loads(patched)
+
+
+def _dedupe_str_list_preserve_order(items: List[str]) -> List[str]:
+    seen: Set[str] = set()
+    out: List[str] = []
+    for x in items:
+        if not isinstance(x, str) or not x.strip():
+            continue
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
+
+
+def _derive_market_hard_fails_from_outline_review(
+    review_obj: Dict[str, Any],
+    dense_stats: Dict[str, Any],
+    chosen_concept: Dict[str, Any],
+) -> List[str]:
+    """程序性合并 outline_review 的维度分与 stats，不依赖模型是否在 hard_fail_reasons 里写清。"""
+    out: List[str] = []
+    ds = review_obj.get("dimension_scores") or {}
+    if not isinstance(ds, dict):
+        ds = {}
+
+    def _dim_score(key: str) -> Optional[int]:
+        v = ds.get(key)
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    s_ec = _dim_score("episode_count_fit_1to10")
+    if s_ec is not None and s_ec <= 4:
+        out.append("outline_review 判定长篇体量不成立")
+    s_f3 = _dim_score("front3_payoff_strength_1to10")
+    if s_f3 is not None and s_f3 <= 4:
+        out.append("outline_review 判定前 3 集回报不足")
+    s_op = _dim_score("opening_pressure_calibration_1to10")
+    if s_op is not None and s_op <= 4:
+        out.append("outline_review 判定开局压迫/回报失衡")
+
+    br = dense_stats.get("front10_bridge_only_ratio") if isinstance(dense_stats, dict) else None
+    try:
+        brf = float(br) if br is not None else None
+    except (TypeError, ValueError):
+        brf = None
+    if brf is not None and brf > 0.5:
+        out.append(f"outline_review 程序合并：front10 桥接过半（front10_bridge_only_ratio={brf:.2f}）")
+
+    pref_min = int(chosen_concept.get("preferred_total_episodes_min") or 30)
+    is_lf = bool(chosen_concept.get("is_longform_series") or False)
+    try:
+        te = int(chosen_concept.get("total_episodes") or 0)
+    except (TypeError, ValueError):
+        te = 0
+    if is_lf and te and te < pref_min:
+        out.append(
+            f"outline_review 程序合并：长篇题材 total_episodes={te} < preferred_total_episodes_min={pref_min}"
+        )
+
+    return _dedupe_str_list_preserve_order(out)
+
+
+_VISIBLE_GAIN_TYPE_TOKENS = frozenset(
+    {
+        "public_reversal",
+        "resource_gain",
+        "position_gain",
+        "alliance_gain",
+        "information_advantage",
+        "survival_win",
+        "emotional_counterhit",
+    }
+)
+
+
+def _episode_function_item_has_visible_gain_signal(item: Dict[str, Any]) -> bool:
+    """用 type / payoff_target / description 的英文关键词粗判可见收益型（与 front3 retention 对齐）。"""
+    parts: List[str] = []
+    for k in ("type", "payoff_target", "description"):
+        v = item.get(k)
+        if isinstance(v, str) and v.strip():
+            parts.append(v.lower())
+    blob = " ".join(parts)
+    for tok in _VISIBLE_GAIN_TYPE_TOKENS:
+        if tok in blob:
+            return True
+    return False
+
+
+def _lint_short_drama_dialogue(script_obj: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    程序性对白短剧化 lint：不替代 LLM package_judge，但产出可写入 scorecard / gate 的问题清单。
+    缺少 dialogue/narration 时安全退化。
+    """
+    explain_kws = (
+        "也就是说",
+        "总而言之",
+        "本质上",
+        "这意味着",
+        "综上所述",
+        "不难看出",
+        "由此可见",
+    )
+    problems: List[str] = []
+    stats: Dict[str, Any] = {
+        "long_line_over_26": 0,
+        "narration_chars": 0,
+        "dialogue_line_count": 0,
+        "scene_count": 0,
+    }
+    if not isinstance(script_obj, dict):
+        return {"pass": True, "problems": [], "stats": stats}
+    scenes = script_obj.get("scenes")
+    if not isinstance(scenes, list):
+        return {"pass": True, "problems": [], "stats": stats}
+
+    line_lengths: List[int] = []
+    for sc in scenes:
+        if not isinstance(sc, dict):
+            continue
+        stats["scene_count"] += 1
+        nar = sc.get("narration")
+        if isinstance(nar, str) and nar.strip():
+            nlen = len(nar.strip())
+            stats["narration_chars"] += nlen
+            if nlen > 200:
+                problems.append("narration 过长，疑似用旁白替代场面与对白推进")
+        dlg = sc.get("dialogue")
+        if not isinstance(dlg, list):
+            continue
+        for turn in dlg:
+            if not isinstance(turn, dict):
+                continue
+            line = str(turn.get("line") or "")
+            if not line.strip():
+                continue
+            stats["dialogue_line_count"] += 1
+            ln = len(line)
+            line_lengths.append(ln)
+            if ln > 26:
+                stats["long_line_over_26"] += 1
+            for kw in explain_kws:
+                if kw in line:
+                    problems.append(f"对白疑似解释/总结腔：含「{kw}」")
+                    break
+
+    if stats["long_line_over_26"] > 2:
+        problems.append(
+            f"超过 26 字的对白条数过多（{stats['long_line_over_26']}），短剧主对白应更短"
+        )
+    if len(line_lengths) >= 10:
+        span = max(line_lengths) - min(line_lengths)
+        if span <= 2 and max(line_lengths) > 0:
+            problems.append("对白长度分布过于一致，疑似角色口吻未区分")
+
+    # 去重问题文案
+    prob_out = _dedupe_str_list_preserve_order(problems)[:24]
+    pass_ok = len(prob_out) == 0
+    return {"pass": pass_ok, "problems": prob_out, "stats": stats}
 
 
 def _is_blank(v: Any) -> bool:
@@ -267,6 +431,24 @@ def _validate_stage_output(
                         issues.append(
                             "future_threads_strengthened_items 未能对齐 current episode contract.must_set_up_items 的 setup_id"
                         )
+
+            # front3：合同标记 visible_gain_type=none 时，viewer_payoff_design 仍须出现可见收益型条目（关键词/类型）
+            try:
+                ep_num = int(qc_context.get("episode_id"))
+            except (TypeError, ValueError):
+                ep_num = 0
+            vgt = str(qc_context.get("visible_gain_type") or "").strip().lower()
+            if 1 <= ep_num <= 3 and vgt == "none":
+                vpd_list = vpd if isinstance(vpd, list) else []
+                any_vis = False
+                for it in vpd_list:
+                    if isinstance(it, dict) and _episode_function_item_has_visible_gain_signal(it):
+                        any_vis = True
+                        break
+                if not any_vis:
+                    issues.append(
+                        "前 3 集缺少可见收益型 viewer_payoff_design，与 front3 retention contract 不一致"
+                    )
         return issues
     if stage == "plot":
         caps = genre_caps if isinstance(genre_caps, dict) else get_primary_genre_capabilities("general")
@@ -1046,7 +1228,18 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         score = int(outline_review_out.get("overall_score_1to10") or 0)
         outline_hard_fails = list(outline_review_out.get("hard_fail_reasons") or [])
         dense_hard_fails = list(dense_validation.get("hard_fail_reasons") or [])
-        hard_fails = outline_hard_fails + dense_hard_fails + concept_count_fit_hard_fails
+        dense_stats = dense_validation.get("stats") or {}
+        if not isinstance(dense_stats, dict):
+            dense_stats = {}
+        review_market_fails = _derive_market_hard_fails_from_outline_review(
+            outline_review_out, dense_stats, chosen_concept
+        )
+        hard_fails = _dedupe_str_list_preserve_order(
+            outline_hard_fails
+            + dense_hard_fails
+            + concept_count_fit_hard_fails
+            + review_market_fails
+        )
 
         # 4) 若无 dense hard fail 但有强启发式风险，则触发 warning judge 二次裁决
         dense_should_judge = _dense_outline_warning_judge_needed(dense_validation)
@@ -1479,6 +1672,7 @@ def _creative_scorecard_placeholder(reason: str) -> Dict[str, Any]:
 def _merge_creative_scorecard(
     plot_judge: Optional[Dict[str, Any]],
     package_judge: Optional[Dict[str, Any]],
+    dialogue_lint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     qj = None
     if isinstance(package_judge, dict):
@@ -1489,12 +1683,28 @@ def _merge_creative_scorecard(
             "reason": str((package_judge or {}).get("summary", "") or "package 评审"),
             "overall_score_1to10": int((package_judge or {}).get("overall_score_1to10") or 0),
         }
+    lint = dialogue_lint if isinstance(dialogue_lint, dict) else {}
+    lint_problems = list(lint.get("problems") or []) if isinstance(lint.get("problems"), list) else []
+    lint_pass = bool(lint.get("pass", True))
+    merged_reason = str(qj.get("reason", ""))
+    if lint_problems:
+        merged_reason = (
+            merged_reason
+            + ("； " if merged_reason else "")
+            + "dialogue_lint: "
+            + " / ".join(str(x) for x in lint_problems[:6])
+        )
     return {
         "plot_judge": plot_judge,
         "package_judge": package_judge,
+        "dialogue_lint": {
+            "pass": lint_pass,
+            "problems": lint_problems,
+            "stats": lint.get("stats") if isinstance(lint.get("stats"), dict) else {},
+        },
         "quality_judge": {
             "pass": bool(qj.get("pass")),
-            "reason": str(qj.get("reason", "")),
+            "reason": merged_reason,
             "overall_score_1to10": int(qj.get("overall_score_1to10") or 0),
         },
     }
@@ -1980,9 +2190,26 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                 _dump_json(ep_files["storyboard"], storyboard_out)
 
             if not use_judges:
-                creative_scorecard = _creative_scorecard_placeholder(
-                    "fast 模式且未加 --episode-judge：跳过分集 plot/package judge。"
-                )
+                dlint_fast = _lint_short_drama_dialogue(script_out)
+                creative_scorecard = {
+                    "plot_judge": plot_judge_out,
+                    "package_judge": None,
+                    "dialogue_lint": {
+                        "pass": bool(dlint_fast.get("pass", True)),
+                        "problems": list(dlint_fast.get("problems") or []),
+                        "stats": dlint_fast.get("stats") or {},
+                    },
+                    "quality_judge": {
+                        "pass": True,
+                        "reason": "fast 模式且未加 --episode-judge：跳过分集 plot/package judge。",
+                        "overall_score_1to10": 0,
+                    },
+                }
+                if dlint_fast.get("problems"):
+                    creative_scorecard["quality_judge"]["reason"] += (
+                        " | dialogue_lint: "
+                        + " / ".join(str(x) for x in (dlint_fast.get("problems") or [])[:8])
+                    )
                 break
 
             pkg_prompt_base = (
@@ -2002,7 +2229,10 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
                 session_id=f"episode_{ep_id}_package_judge_g{gi}",
                 debug_dir=debug_dir,
             )
-            creative_scorecard = _merge_creative_scorecard(plot_judge_out, package_judge_out)
+            dialogue_lint_out = _lint_short_drama_dialogue(script_out)
+            creative_scorecard = _merge_creative_scorecard(
+                plot_judge_out, package_judge_out, dialogue_lint=dialogue_lint_out
+            )
             _dump_json(ep_files["creative_scorecard"], creative_scorecard)
 
             if bool(package_judge_out.get("pass")):

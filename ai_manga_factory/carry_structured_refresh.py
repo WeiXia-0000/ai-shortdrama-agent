@@ -69,6 +69,97 @@ def _load_json(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _episode_row_from_outline(paths: Dict[str, Any], ep_id: int) -> Dict[str, Any]:
+    p = paths.get("series_outline")
+    if p is None:
+        return {}
+    pp = Path(p)
+    if not pp.is_file():
+        return {}
+    data = _load_json(pp) or {}
+    for ep in data.get("episode_list") or []:
+        if not isinstance(ep, dict):
+            continue
+        try:
+            if int(ep.get("episode_id") or -1) == ep_id:
+                return ep
+        except (TypeError, ValueError):
+            continue
+    return {}
+
+
+def _stable_payoff_compound_key(payoff_id: str) -> str:
+    raw = f"payoff_id|{_norm(payoff_id)}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:18]
+
+
+def _stable_setup_compound_key(setup_id: str) -> str:
+    raw = f"setup_id|{_norm(setup_id)}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:18]
+
+
+def _extract_payoff_setup_ids_from_episode_function(fn: Dict[str, Any]) -> Tuple[Set[str], Set[str]]:
+    payoff_ids: Set[str] = set()
+    setup_ids: Set[str] = set()
+    vpd = fn.get("viewer_payoff_design") or []
+    if isinstance(vpd, list):
+        for item in vpd:
+            if not isinstance(item, dict):
+                continue
+            pid = str(item.get("payoff_id") or "").strip()
+            if pid:
+                payoff_ids.add(pid)
+            sid = str(item.get("setup_source_id") or "").strip()
+            if sid:
+                setup_ids.add(sid)
+            for ls in item.get("linked_setup_ids") or []:
+                if str(ls).strip():
+                    setup_ids.add(str(ls).strip())
+    fti = fn.get("future_threads_strengthened_items") or []
+    if isinstance(fti, list):
+        for item in fti:
+            if isinstance(item, dict) and str(item.get("setup_id") or "").strip():
+                setup_ids.add(str(item["setup_id"]).strip())
+    return payoff_ids, setup_ids
+
+
+def _collect_global_payoff_setup_id_refs(
+    paths: Dict[str, Any],
+    layout: str,
+    ep_dirs: List[Tuple[int, Path]],
+) -> Tuple[Set[str], Set[str]]:
+    """全剧扫描：任意结构化产物仍引用某 payoff_id/setup_id 则用于 stale 保护。"""
+    payoff_ids: Set[str] = set()
+    setup_ids: Set[str] = set()
+    op = paths.get("series_outline")
+    if op and Path(op).is_file():
+        data = _load_json(Path(op)) or {}
+        for ep in data.get("episode_list") or []:
+            if not isinstance(ep, dict):
+                continue
+            for it in ep.get("must_payoff_items") or []:
+                if isinstance(it, dict) and str(it.get("payoff_id") or "").strip():
+                    payoff_ids.add(str(it["payoff_id"]).strip())
+            for it in ep.get("must_set_up_items") or []:
+                if isinstance(it, dict) and str(it.get("setup_id") or "").strip():
+                    setup_ids.add(str(it["setup_id"]).strip())
+    fn_name = "01_episode_function.json" if layout == "layered" else "episode_function.json"
+    pkg_name = "06_package.json" if layout == "layered" else "package.json"
+    for _ep_id, d in ep_dirs:
+        fn = _load_json(d / fn_name) or {}
+        pids, sids = _extract_payoff_setup_ids_from_episode_function(fn)
+        payoff_ids |= pids
+        setup_ids |= sids
+        pkg = _load_json(d / pkg_name)
+        if isinstance(pkg, dict):
+            ef2 = pkg.get("episode_function")
+            if isinstance(ef2, dict):
+                p2, s2 = _extract_payoff_setup_ids_from_episode_function(ef2)
+                payoff_ids |= p2
+                setup_ids |= s2
+    return payoff_ids, setup_ids
+
+
 def _iter_episode_dirs(episodes_root: Path, layout: str) -> List[Tuple[int, Path]]:
     if not episodes_root.is_dir():
         return []
@@ -320,6 +411,7 @@ def refresh_promise_lane_structured(
     by_ck: Dict[str, Dict[str, Any]] = {}
     ep_dirs = _iter_episode_dirs(episodes_root, layout)
     max_ep = max((e for e, _ in ep_dirs), default=0)
+    global_payoff_ids, global_setup_ids = _collect_global_payoff_setup_id_refs(paths, layout, ep_dirs)
 
     def upsert_row(row: Dict[str, Any]) -> None:
         ck = row["compound_key"]
@@ -370,17 +462,91 @@ def refresh_promise_lane_structured(
         fn = _load_json(fn_path) or {}
         plot = _load_json(pl_path) or {}
 
+        outline_row = _episode_row_from_outline(paths, ep_id)
+        for oitem in outline_row.get("must_payoff_items") or []:
+            if not isinstance(oitem, dict):
+                continue
+            payoff_id_o = str(oitem.get("payoff_id") or "").strip()
+            if not payoff_id_o:
+                continue
+            desc_o = str(oitem.get("description") or "")[:800]
+            deadline_o = str(oitem.get("deadline") or "")
+            ck_o = _stable_payoff_compound_key(payoff_id_o)
+            row_o: Dict[str, Any] = {
+                "promise_id": f"payoff:{payoff_id_o}",
+                "compound_key": ck_o,
+                "weak_identity_token": "",
+                "created_episode": ep_id,
+                "source_stage": "series_outline",
+                "source_type": "outline_must_payoff",
+                "setup_source": "",
+                "setup_source_id": "",
+                "payoff_target": f"[deadline={deadline_o}]" if deadline_o else "",
+                "payoff_id": payoff_id_o,
+                "setup_id": "",
+                "linked_setup_ids": [],
+                "description": desc_o if desc_o.strip() else f"[outline] payoff_id={payoff_id_o}",
+                "source_ids": ["outline.must_payoff_items"],
+                "status": "open",
+                "last_seen_episode": ep_id,
+                "resolved_episode": None,
+                "stale_reason": None,
+                "linked_anchor_ids": [],
+                "linked_episode_ids": [ep_id],
+                "linked_beat_refs": [],
+                "decision_trace": [],
+                "manual_status_lock": False,
+            }
+            row_o.update(meta_row)
+            upsert_row(row_o)
+
+        for oitem in outline_row.get("must_set_up_items") or []:
+            if not isinstance(oitem, dict):
+                continue
+            setup_id_o = str(oitem.get("setup_id") or "").strip()
+            if not setup_id_o:
+                continue
+            desc_o = str(oitem.get("description") or "")[:500]
+            ck_s = _stable_setup_compound_key(setup_id_o)
+            row_s: Dict[str, Any] = {
+                "promise_id": f"setup:{setup_id_o}",
+                "compound_key": ck_s,
+                "weak_identity_token": "",
+                "created_episode": ep_id,
+                "source_stage": "series_outline",
+                "source_type": "outline_setup",
+                "setup_source": "",
+                "setup_source_id": "",
+                "payoff_target": "",
+                "payoff_id": "",
+                "setup_id": setup_id_o,
+                "linked_setup_ids": [],
+                "description": desc_o if desc_o.strip() else f"[outline] setup_id={setup_id_o}",
+                "source_ids": ["outline.must_set_up_items"],
+                "status": "open",
+                "last_seen_episode": ep_id,
+                "resolved_episode": None,
+                "stale_reason": None,
+                "linked_anchor_ids": [],
+                "linked_episode_ids": [ep_id],
+                "linked_beat_refs": [],
+                "decision_trace": [],
+                "manual_status_lock": False,
+            }
+            row_s.update(meta_row)
+            upsert_row(row_s)
+
         vpd = fn.get("viewer_payoff_design") or []
         if isinstance(vpd, list):
             for item in vpd:
                 if not isinstance(item, dict):
                     continue
                 desc = str(item.get("description") or item.get("statement") or "")[:800]
-                if not desc.strip():
+                payoff_id = str(item.get("payoff_id") or "").strip()
+                if not desc.strip() and not payoff_id:
                     continue
                 setup = str(item.get("setup_source") or "")
                 payoff = str(item.get("payoff_target") or "")
-                payoff_id = str(item.get("payoff_id") or "").strip()
                 setup_source_id = str(item.get("setup_source_id") or "").strip()
                 linked_setup_ids = item.get("linked_setup_ids") or []
                 linked_blob = ""
@@ -389,14 +555,14 @@ def refresh_promise_lane_structured(
                     if linked_list:
                         linked_blob = ",".join(sorted(set(linked_list)))
 
-                # ID 追踪优先：把 payoff_id / setup_source_id 注入 compound_key/promise_id
-                # （文本 overlap 逻辑仍保留，用于旧数据与 fallback）
                 if setup_source_id:
                     setup = f"[setup_id={setup_source_id}] {setup}"
                 if payoff_id:
                     payoff = f"[payoff_id={payoff_id}] {payoff}"
                 if linked_blob:
                     desc = (desc + f" [linked_setup_ids={linked_blob}]")[:800]
+                if not str(desc).strip() and payoff_id:
+                    desc = f"[episode_function] payoff_id={payoff_id}"
                 stype = str(item.get("type") or "viewer_payoff")
                 linked_anchors = []
                 for aid, info in anchors.items():
@@ -406,10 +572,16 @@ def refresh_promise_lane_structured(
                     )
                     if blob and _overlap_substring(_norm(desc)[:40], _norm(blob), 6):
                         linked_anchors.append(aid)
-                ck = _compound_promise_key(setup, payoff, desc, stype, "episode_function", linked_anchors)
-                wit = _weak_identity_token(setup, payoff, linked_anchors)
+                if payoff_id:
+                    ck = _stable_payoff_compound_key(payoff_id)
+                    promise_id_val = f"payoff:{payoff_id}"
+                    wit = _weak_identity_token(setup, payoff, linked_anchors)
+                else:
+                    ck = _compound_promise_key(setup, payoff, desc, stype, "episode_function", linked_anchors)
+                    promise_id_val = f"p_{ck}"
+                    wit = _weak_identity_token(setup, payoff, linked_anchors)
                 row = {
-                    "promise_id": f"p_{ck}",
+                    "promise_id": promise_id_val,
                     "compound_key": ck,
                     "weak_identity_token": wit,
                     "created_episode": ep_id,
@@ -419,8 +591,10 @@ def refresh_promise_lane_structured(
                     "setup_source_id": setup_source_id,
                     "payoff_target": payoff,
                     "payoff_id": payoff_id,
+                    "setup_id": "",
                     "linked_setup_ids": linked_setup_ids if isinstance(linked_setup_ids, list) else [],
                     "description": desc,
+                    "source_ids": ["episode_function.viewer_payoff_design"],
                     "status": "open",
                     "last_seen_episode": ep_id,
                     "resolved_episode": None,
@@ -433,6 +607,70 @@ def refresh_promise_lane_structured(
                 }
                 row.update(meta_row)
                 upsert_row(row)
+
+        fti = fn.get("future_threads_strengthened_items") or []
+        if isinstance(fti, list):
+            for item in fti:
+                if not isinstance(item, dict):
+                    continue
+                setup_id = str(item.get("setup_id") or "").strip()
+                desc = str(item.get("description") or "")[:500]
+                if setup_id:
+                    ck = _stable_setup_compound_key(setup_id)
+                    row = {
+                        "promise_id": f"setup:{setup_id}",
+                        "compound_key": ck,
+                        "weak_identity_token": "",
+                        "created_episode": ep_id,
+                        "source_stage": "episode_function",
+                        "source_type": "future_thread_item",
+                        "setup_source": "",
+                        "setup_source_id": "",
+                        "payoff_target": str(item.get("payoff_window") or ""),
+                        "payoff_id": "",
+                        "setup_id": setup_id,
+                        "linked_setup_ids": [],
+                        "description": desc if desc.strip() else f"[fts_item] setup_id={setup_id}",
+                        "source_ids": ["episode_function.future_threads_strengthened_items"],
+                        "status": "open",
+                        "last_seen_episode": ep_id,
+                        "resolved_episode": None,
+                        "stale_reason": None,
+                        "linked_anchor_ids": [],
+                        "linked_episode_ids": [ep_id],
+                        "linked_beat_refs": [],
+                        "decision_trace": [],
+                        "manual_status_lock": False,
+                    }
+                    row.update(meta_row)
+                    upsert_row(row)
+                elif len(desc.strip()) >= 6:
+                    setup, payoff, stype = "", "", "future_thread_item_str"
+                    ck = _compound_promise_key(setup, payoff, desc, stype, "episode_function", [])
+                    row = {
+                        "promise_id": f"p_{ck}",
+                        "compound_key": ck,
+                        "weak_identity_token": "",
+                        "created_episode": ep_id,
+                        "source_stage": "episode_function",
+                        "source_type": "future_thread",
+                        "setup_source": "future_threads_strengthened_items",
+                        "payoff_target": "",
+                        "payoff_id": "",
+                        "setup_id": "",
+                        "description": desc[:500],
+                        "status": "open",
+                        "last_seen_episode": ep_id,
+                        "resolved_episode": None,
+                        "stale_reason": None,
+                        "linked_anchor_ids": [],
+                        "linked_episode_ids": [ep_id],
+                        "linked_beat_refs": [],
+                        "decision_trace": [],
+                        "manual_status_lock": False,
+                    }
+                    row.update(meta_row)
+                    upsert_row(row)
 
         fts = fn.get("future_threads_strengthened") or []
         if isinstance(fts, list):
@@ -451,6 +689,8 @@ def refresh_promise_lane_structured(
                     "source_type": stype,
                     "setup_source": "future_threads_strengthened",
                     "payoff_target": "",
+                    "payoff_id": "",
+                    "setup_id": "",
                     "description": t[:500],
                     "status": "open",
                     "last_seen_episode": ep_id,
@@ -535,6 +775,12 @@ def refresh_promise_lane_structured(
         created = row.get("created_episode")
         last_seen = row.get("last_seen_episode") or created
         if max_ep and last_seen is not None and (max_ep - int(last_seen) >= STALE_PROMISE_EPISODE_WINDOW):
+            pid_ref = str(row.get("payoff_id") or "").strip()
+            sid_ref = str(row.get("setup_id") or "").strip()
+            if pid_ref and pid_ref in global_payoff_ids:
+                continue
+            if sid_ref and sid_ref in global_setup_ids:
+                continue
             row["status"] = "stale"
             row["stale_reason"] = (
                 f"已超过 {STALE_PROMISE_EPISODE_WINDOW} 集未在结构化产物中出现可匹配承接 "
