@@ -74,6 +74,70 @@ _ABSOLUTE_WORDS = {
     ],
 }
 
+# ------------------------------
+# Short-drama market gating vocab
+# ------------------------------
+HIGH_PRESSURE_OPENING_WORDS = {
+    "家宴",
+    "羞辱",
+    "群嘲",
+    "跪",
+    "逐出",
+    "当众",
+    "处刑",
+    "退婚",
+    "打压",
+    "围攻",
+    "审判",
+    "逼离",
+    "断供",
+    "休妻",
+    "夺席位",
+    "公开",
+}
+
+VISIBLE_PAYOFF_WORDS = {
+    "反打",
+    "反将",
+    "夺回",
+    "站住",
+    "翻盘",
+    "打脸",
+    "当众改口",
+    "拿到证据",
+    "赢下一局",
+    "让位",
+    "断供对手",
+    "公开承认",
+    "众人沉默",
+    "对手吃亏",
+}
+
+HIDDEN_ADVANTAGE_WORDS = {
+    "留后手",
+    "录音",
+    "证据在手",
+    "故意示弱",
+    "提前布局",
+    "套话成功",
+    "掌握把柄",
+    "看穿陷阱",
+}
+
+BRIDGE_ONLY_WORDS = {
+    "调查",
+    "决定",
+    "意识到",
+    "继续推进",
+    "进一步了解",
+    "开始适应",
+    "观察",
+    "整理线索",
+    "准备",
+}
+
+RETENTION_ENGINE_MISSING_SAFE = "none"
+
 
 def _is_blank(v: Any) -> bool:
     if v is None:
@@ -401,6 +465,146 @@ def validate_dense_outline(series_outline: Dict[str, Any]) -> Dict[str, Any]:
         total_concrete_hits += c
 
     episode_count = len(episodes_sorted)
+
+    # ------------------------------
+    # Short-drama market gating stats / hard-fail
+    # （向后兼容：只有当新字段在前 3/前 10 中出现过才会触发相应硬失败）
+    # ------------------------------
+    first3 = episodes_sorted[:3]
+    first10 = episodes_sorted[:10]
+
+    opening_pressure_misfire_flag = False
+    front3_visible_payoff_count = 0
+    front10_low_payoff_runs = 0
+    front10_bridge_only_ratio = 0.0
+    front10_retention_engine_missing_count = 0
+    front10_opponent_gain_missing_count = 0
+    front10_public_standup_missing_count = 0
+
+    # 规则 1：长篇短剧体量硬失败（概念 min/max 在 run_series 里二次合并）
+    if episode_count < 30:
+        hard_fail_reasons.append("长篇短剧体量过短（total_episodes < 30）")
+
+    # 规则 3：前 3 集至少有一次明确可见回报 + 至少 1 集公开站住（公开站住按 warnings）
+    has_front3_visible = any("visible_gain_type" in ep for ep in first3)
+    if has_front3_visible:
+        front3_visible_payoff_count = sum(
+            1
+            for ep in first3
+            if str(ep.get("visible_gain_type") or "").strip().lower() not in ("", "none")
+        )
+        if front3_visible_payoff_count == 0:
+            hard_fail_reasons.append("前 3 集没有明确可见回报（visible_gain_type != none 的集数为 0）")
+
+    has_front3_public = any("public_standup_event" in ep for ep in first3)
+    if has_front3_public:
+        front3_public_missing = sum(
+            1 for ep in first3 if _is_blank(ep.get("public_standup_event"))
+        )
+        if front3_public_missing >= len(first3):
+            warnings.append("前 3 集缺少公开站住事件（public_standup_event 全空）")
+
+    # 规则 2：开局高压必须快速回报（仅在 opening_pressure_level 字段在第 1 集出现时触发）
+    ep1 = first3[0] if first3 else {}
+    if isinstance(ep1, dict) and "opening_pressure_level" in ep1:
+        opening_level = str(ep1.get("opening_pressure_level") or "").strip().lower()
+        if opening_level in ("high", "extreme"):
+            visible_gain = str(ep1.get("visible_gain_type") or "").strip().lower()
+            hidden_seed = str(ep1.get("hidden_advantage_seed") or "").strip()
+            payoff_deadline = str(ep1.get("payoff_deadline") or "").strip().lower()
+            visible_is_none = visible_gain in ("", "none")
+            seed_blank = hidden_seed == ""
+            payoff_ok = payoff_deadline in ("same_episode", "next_episode")
+            opening_pressure_misfire_flag = visible_is_none and seed_blank and (not payoff_ok)
+            if opening_pressure_misfire_flag:
+                hard_fail_reasons.append("开局高压但前 1-2 集不给回报或反制筹码（opening_pressure_misfire）")
+
+    # 规则 4：前 10 集不能桥接过多
+    has_bridge_field = any("bridge_episode_flag" in ep for ep in first10)
+    if has_bridge_field:
+        bridge_count = sum(1 for ep in first10 if bool(ep.get("bridge_episode_flag")) is True)
+        front10_bridge_only_ratio = bridge_count / max(1, len(first10))
+        if front10_bridge_only_ratio > 0.4:
+            warnings.append(f"front10_bridge_only_ratio 过高（ratio={front10_bridge_only_ratio:.2f}）")
+        if front10_bridge_only_ratio > 0.5:
+            hard_fail_reasons.append(f"前 10 集桥接过多导致留人崩塌（front10_bridge_only_ratio={front10_bridge_only_ratio:.2f}）")
+
+    # 规则：前 10 低回报连续跑（visible_gain=none + bridge=true 或文本只在桥接词里打转）
+    front10_market_fields_present = any("visible_gain_type" in ep for ep in first10) or any(
+        "bridge_episode_flag" in ep for ep in first10
+    )
+    if front10_market_fields_present:
+        runs = []
+        run_start = None
+        run_len = 0
+        for i, ep in enumerate(first10):
+            text = _to_text_for_episode(ep)
+            visible_gain = str(ep.get("visible_gain_type") or "").strip().lower()
+            bridge_true = bool(ep.get("bridge_episode_flag")) is True
+
+            visible_is_none = visible_gain in ("", "none")
+            text_bridge_only = (
+                any(w in text for w in BRIDGE_ONLY_WORDS)
+                and not any(w in text for w in VISIBLE_PAYOFF_WORDS)
+                and not any(w in text for w in HIGH_PRESSURE_OPENING_WORDS)
+                and not any(w in text for w in HIDDEN_ADVANTAGE_WORDS)
+            )
+            low_cond = (visible_is_none and bridge_true) or text_bridge_only
+
+            if low_cond:
+                if run_start is None:
+                    run_start = i
+                    run_len = 1
+                else:
+                    run_len += 1
+            else:
+                if run_start is not None and run_len >= 3:
+                    runs.append((run_start, run_start + run_len - 1))
+                run_start = None
+                run_len = 0
+        if run_start is not None and run_len >= 3:
+            runs.append((run_start, run_start + run_len - 1))
+
+        front10_low_payoff_runs = len(runs)
+        if front10_low_payoff_runs > 0:
+            warnings.append(f"front10_low_payoff_runs：存在连续低回报段（次数={front10_low_payoff_runs}）")
+
+    # 规则：retention_engine_tag / opponent_gain / public_standup_event 缺失
+    has_retention_field = any("retention_engine_tag" in ep for ep in first10)
+    if has_retention_field:
+        front10_retention_engine_missing_count = sum(
+            1
+            for ep in first10
+            if str(ep.get("retention_engine_tag") or "").strip().lower() in ("", RETENTION_ENGINE_MISSING_SAFE)
+        )
+        if front10_retention_engine_missing_count > 4:
+            warnings.append(
+                f"front10_retention_engine_missing_count 过高（count={front10_retention_engine_missing_count}）"
+            )
+        if front10_retention_engine_missing_count > 6:
+            hard_fail_reasons.append("前 10 集 retention_engine_tag 缺失过多（留人市场治理失败）")
+
+    has_opponent_field = any("opponent_gain" in ep for ep in first10)
+    if has_opponent_field:
+        front10_opponent_gain_missing_count = sum(
+            1 for ep in first10 if _is_blank(ep.get("opponent_gain"))
+        )
+        if front10_opponent_gain_missing_count > 4:
+            warnings.append(
+                f"front10_opponent_gain_missing_count 过高（count={front10_opponent_gain_missing_count}）"
+            )
+
+    has_public_field = any("public_standup_event" in ep for ep in first10)
+    if has_public_field:
+        front10_public_standup_missing_count = sum(
+            1 for ep in first10 if _is_blank(ep.get("public_standup_event"))
+        )
+        # 仅做 warning：是否 hard fail 交由 run_series/judge 二次裁决
+        if front10_public_standup_missing_count >= 8:
+            warnings.append(
+                f"front10_public_standup_missing_count 偏高（count={front10_public_standup_missing_count}）"
+            )
+
     abstract_avg = (total_abstract_hits / episode_count) if episode_count else 0.0
     concrete_avg = (total_concrete_hits / episode_count) if episode_count else 0.0
     low_event_density_flag = False
@@ -639,6 +843,13 @@ def validate_dense_outline(series_outline: Dict[str, Any]) -> Dict[str, Any]:
             "must_set_up_missing_count": must_set_up_missing_count,
             "light_shift_triplet_empty_count": light_shift_triplet_empty_count,
             "light_shift_triplet_empty_ratio": light_shift_triplet_empty_ratio,
+            "opening_pressure_misfire_flag": opening_pressure_misfire_flag,
+            "front3_visible_payoff_count": front3_visible_payoff_count,
+            "front10_low_payoff_runs": front10_low_payoff_runs,
+            "front10_bridge_only_ratio": front10_bridge_only_ratio,
+            "front10_retention_engine_missing_count": front10_retention_engine_missing_count,
+            "front10_opponent_gain_missing_count": front10_opponent_gain_missing_count,
+            "front10_public_standup_missing_count": front10_public_standup_missing_count,
         },
     }
 
@@ -666,5 +877,24 @@ def summarize_dense_outline_validation(result: Dict[str, Any]) -> Dict[str, Any]
         notes.append("low_event_density_flag=true")
     if notes:
         summary.append("Flags: " + ", ".join(notes))
+
+    # 市场治理摘要（便于 dashboard / 控制台快速定位根因）
+    market_notes: List[str] = []
+    if stats.get("opening_pressure_misfire_flag"):
+        market_notes.append("opening_pressure_misfire=true")
+    market_notes.append(f"front3_visible_payoff_count={stats.get('front3_visible_payoff_count')}")
+    market_notes.append(f"front10_low_payoff_runs={stats.get('front10_low_payoff_runs')}")
+    market_notes.append(f"front10_bridge_only_ratio={stats.get('front10_bridge_only_ratio')}")
+    market_notes.append(
+        f"front10_retention_engine_missing_count={stats.get('front10_retention_engine_missing_count')}"
+    )
+    market_notes.append(
+        f"front10_opponent_gain_missing_count={stats.get('front10_opponent_gain_missing_count')}"
+    )
+    market_notes.append(
+        f"front10_public_standup_missing_count={stats.get('front10_public_standup_missing_count')}"
+    )
+    if market_notes:
+        summary.append("MarketGating: " + ", ".join(market_notes[:7]))
     return "\n".join(summary)
 

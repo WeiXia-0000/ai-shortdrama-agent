@@ -380,6 +380,23 @@ def refresh_promise_lane_structured(
                     continue
                 setup = str(item.get("setup_source") or "")
                 payoff = str(item.get("payoff_target") or "")
+                payoff_id = str(item.get("payoff_id") or "").strip()
+                setup_source_id = str(item.get("setup_source_id") or "").strip()
+                linked_setup_ids = item.get("linked_setup_ids") or []
+                linked_blob = ""
+                if isinstance(linked_setup_ids, list):
+                    linked_list = [str(x).strip() for x in linked_setup_ids if str(x).strip()]
+                    if linked_list:
+                        linked_blob = ",".join(sorted(set(linked_list)))
+
+                # ID 追踪优先：把 payoff_id / setup_source_id 注入 compound_key/promise_id
+                # （文本 overlap 逻辑仍保留，用于旧数据与 fallback）
+                if setup_source_id:
+                    setup = f"[setup_id={setup_source_id}] {setup}"
+                if payoff_id:
+                    payoff = f"[payoff_id={payoff_id}] {payoff}"
+                if linked_blob:
+                    desc = (desc + f" [linked_setup_ids={linked_blob}]")[:800]
                 stype = str(item.get("type") or "viewer_payoff")
                 linked_anchors = []
                 for aid, info in anchors.items():
@@ -399,7 +416,10 @@ def refresh_promise_lane_structured(
                     "source_stage": "episode_function",
                     "source_type": stype,
                     "setup_source": setup,
+                    "setup_source_id": setup_source_id,
                     "payoff_target": payoff,
+                    "payoff_id": payoff_id,
+                    "linked_setup_ids": linked_setup_ids if isinstance(linked_setup_ids, list) else [],
                     "description": desc,
                     "status": "open",
                     "last_seen_episode": ep_id,

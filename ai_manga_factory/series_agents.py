@@ -36,12 +36,14 @@ trend_scout_series = Agent(
     model=MODEL,
     description="基于 market_report 生成 3 个长篇系列概念。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "concepts": [\n    {\n      "id": int,\n      "title": str,\n      "logline": str,\n      "total_episodes": int,\n      "hook_premise": str,\n      "main_arc": str,\n      "why_people_watch": [str],\n      "content_warnings": [str]\n    }\n  ]\n}\n',
+        schema_hint='{\n  "concepts": [\n    {\n      "id": int,\n      "title": str,\n      "logline": str,\n      "total_episodes": int,\n      "preferred_total_episodes_min": int,\n      "preferred_total_episodes_max": int,\n      "is_longform_series": bool,\n      "retention_engine_hint": str,\n      "opening_pressure_style": str,\n      "hook_premise": str,\n      "main_arc": str,\n      "why_people_watch": [str],\n      "content_warnings": [str]\n    }\n  ]\n}\n',
         constraints=[
             "3 个概念必须题材/视角/情绪价值明显不同。",
             "尽量贴近当下短剧常见爆点（系统+求生/规则/规则验证/反杀/反转），但不得生抄。",
             "hook_premise 与 main_arc 要能支撑长期铺垫，避免只写开头。",
-            "数字合理：total_episodes 建议在 30-70 范围内。",
+            "数字合理：total_episodes 建议在 30-80 范围内；preferred_total_episodes_min/max 也必须落在合理区间（min>=30）。",
+            "retention_engine_hint 枚举只允许：public_reversal|rule_exploit_payoff|information_gap_payoff|relationship_payoff|resource_turnover|status_reversal|mixed",
+            "opening_pressure_style 枚举只允许：low_pressure_start|medium_pressure_with_counterseed|high_pressure_with_fast_payoff",
         ],
     ),
 )
@@ -51,10 +53,11 @@ concept_judge_series = Agent(
     model=MODEL,
     description="评审 3 个系列概念并推荐一个。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "audience_view": str,\n  "evaluations": [\n    {\n      "concept_id": int,\n      "market_fit_score_1to10": int,\n      "audience_hook_score_1to10": int,\n      "long_run_potential_score_1to10": int,\n      "logic_score_1to10": int,\n      "commercial_score_1to10": int,\n      "strengths": [str],\n      "risks": [str],\n      "why_target_audience_may_watch": str,\n      "why_target_audience_may_skip": str,\n      "fix_suggestions": [str]\n    }\n  ],\n  "recommended_concept_id": int\n}\n',
+        schema_hint='{\n  "audience_view": str,\n  "evaluations": [\n    {\n      "concept_id": int,\n      "episode_count_fit_1to10": int,\n      "opening_pressure_calibration_1to10": int,\n      "front3_retention_potential_1to10": int,\n      "market_fit_score_1to10": int,\n      "audience_hook_score_1to10": int,\n      "long_run_potential_score_1to10": int,\n      "logic_score_1to10": int,\n      "commercial_score_1to10": int,\n      "strengths": [str],\n      "risks": [str],\n      "hard_disqualifiers": [str],\n      "why_target_audience_may_watch": str,\n      "why_target_audience_may_skip": str,\n      "fix_suggestions": [str]\n    }\n  ],\n  "hard_disqualifiers": [str],\n  "recommended_concept_id": int\n}\n',
         constraints=[
             "recommended_concept_id 必须是 evaluations 中存在的 concept_id。",
             "所有字段必须填写，不得为空。",
+            "hard_disqualifiers 非空时：recommended_concept_id 必须来自 hard_disqualifiers 不命中的概念；若三者都明显命中 hard_disqualifiers，则允许选相对最优但必须在 fix_suggestions 中明确写出 3 项必须修复动作。",
         ],
     ),
 )
@@ -193,7 +196,7 @@ episode_outline_expander_agent = Agent(
     model=MODEL,
     description="从 spine + anchors 展开到 series_outline（分集列表）。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "title": str,\n  "total_episodes": int,\n  "logline": str,\n  "main_characters": [\n    { "name": str, "role": str, "arc_hint": str }\n  ],\n  "overall_arc": str,\n  "episode_list": [\n    {\n      "episode_id": int,\n      "title": str,\n      "one_line": str,\n\n      "episode_engine_type": str,\n      "episode_goal_in_series": str,\n\n      "anchor_ids": [int],\n      "must_advance": [str],\n      "must_payoff": [str],\n      "must_set_up": [str],\n\n      "dominant_opposition": str,\n      "pressure_arena": str,\n\n      "key_turn": str,\n      "status_shift": str,\n      "price_paid": str,\n      "relationship_shift": str,\n      "resource_shift": str,\n      "world_reveal_delta": str,\n\n      "visual_or_public_event": str,\n      "cannot_remove_because": str,\n\n      "hook": str,\n      "cliffhanger": str\n    }\n  ]\n}\n',
+        schema_hint='{\n  "title": str,\n  "total_episodes": int,\n  "logline": str,\n  "main_characters": [\n    { "name": str, "role": str, "arc_hint": str }\n  ],\n  "overall_arc": str,\n  "episode_list": [\n    {\n      "episode_id": int,\n      "title": str,\n      "one_line": str,\n\n      "episode_engine_type": str,\n      "episode_goal_in_series": str,\n\n      "anchor_ids": [int],\n      "must_advance": [str],\n      "must_payoff": [str],\n      "must_set_up": [str],\n\n      "dominant_opposition": str,\n      "pressure_arena": str,\n\n      "key_turn": str,\n      "status_shift": str,\n      "price_paid": str,\n      "relationship_shift": str,\n      "resource_shift": str,\n      "world_reveal_delta": str,\n\n      "visual_or_public_event": str,\n      "cannot_remove_because": str,\n\n      "front3_role": str,\n      "opening_pressure_level": str,\n      "payoff_deadline": str,\n      "visible_gain_type": str,\n      "retention_engine_tag": str,\n      "opponent_gain": str,\n      "bridge_episode_flag": bool,\n      "hidden_advantage_seed": str,\n      "public_standup_event": str,\n\n      "must_payoff_items": [\n        { "payoff_id": str, "description": str, "deadline": str }\n      ],\n      "must_set_up_items": [\n        { "setup_id": str, "description": str, "intended_payoff_window": str }\n      ],\n\n      "hook": str,\n      "cliffhanger": str\n    }\n  ]\n}\n',
         constraints=[
             "must: episode_list 必须由 anchors 驱动展开：分集内容是 anchor 之间的桥接，不是从零平铺。",
             "must: episode_id 必须从 1 连续到 total_episodes。",
@@ -211,6 +214,11 @@ episode_outline_expander_agent = Agent(
             "must: world_reveal_delta 必须明确本集对世界/规则/真相认知推进了什么（可小，但不能含糊）。",
             "must: visual_or_public_event 必须写成镜头可见、观众能记住的事件（不允许只写抽象“推进/确认/调查”）。",
             "must: cannot_remove_because 必须说明删掉这一集会损失哪条主线/关系/伏笔/世界推进；如果写不出来则该集应被判为高风险废集。",
+            "must: 前 3 集 visible_gain_type 至少有 1 集 != none，并且至少 1 集 public_standup_event 非空（公开可拍回报）。",
+            "must: must_payoff_items 与 must_set_up_items 必须存在（允许空数组），且其 description 必须是 must_payoff/must_set_up 文本镜像（用于向后兼容）。",
+            "must: 第 1 集若 opening_pressure_level 是 high/extreme，则至少满足 visible_gain_type != none 或 payoff_deadline in {same_episode,next_episode} 或 hidden_advantage_seed 非空。",
+            "must: 前 3 集 front3_role 不能全部为 setup_bridge；至少 1 集应是 hook_pressure/first_counter/deeper_hook/normal。",
+            "must: opponent_gain 必须写清本集反派或压迫结构具体又拿走了什么/以及主角获得了什么优势，否则对抗感会发虚。",
             "should: bridge 集应体现上一阶段留下的资产/代价/误解如何直接制造本集困局，而不是只继承摘要。",
             "avoid: 避免机械凑集数；若某集删去会坏多个回收，则必须保留并明确它的高价值回收点。",
         ],
@@ -222,16 +230,17 @@ outline_review_agent = Agent(
     model=MODEL,
     description="从题材匹配、市场吸引力、转折节奏与篇幅承载力评审 series_outline，并给出分数与返修建议。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "overall_score_1to10": int,\n  "pass": bool,\n  "dimension_scores": {\n    "genre_fit_1to10": int,\n    "market_hook_1to10": int,\n    "turning_points_1to10": int,\n    "pacing_balance_1to10": int,\n    "length_support_1to10": int,\n    "closure_and_aftertaste_1to10": int,\n\n    "episode_density_1to10": int,\n    "removability_risk_1to10": int,\n    "status_shift_clarity_1to10": int,\n    "payoff_cadence_1to10": int,\n    "late_stage_drift_risk_1to10": int,\n    "event_memorability_1to10": int\n  },\n  "hard_fail_reasons": [str],\n  "strengths": [str],\n  "risks": [str],\n  "must_fix": [str],\n  "rewrite_brief": {\n    "target_overall_score_1to10": int,\n    "must_keep": [str],\n    "must_change": [str],\n    "episode_level_adjustments": [str]\n  }\n}\n',
+        schema_hint='{\n  "overall_score_1to10": int,\n  "pass": bool,\n  "dimension_scores": {\n    "genre_fit_1to10": int,\n    "market_hook_1to10": int,\n    "turning_points_1to10": int,\n    "pacing_balance_1to10": int,\n    "length_support_1to10": int,\n    "closure_and_aftertaste_1to10": int,\n\n    "episode_density_1to10": int,\n    "removability_risk_1to10": int,\n    "status_shift_clarity_1to10": int,\n    "payoff_cadence_1to10": int,\n    "late_stage_drift_risk_1to10": int,\n    "event_memorability_1to10": int,\n\n    "episode_count_fit_1to10": int,\n    "opening_pressure_calibration_1to10": int,\n    "front3_payoff_strength_1to10": int,\n    "front10_retention_1to10": int\n  },\n  "hard_fail_reasons": [str],\n  "strengths": [str],\n  "risks": [str],\n  "must_fix": [str],\n  "rewrite_brief": {\n    "target_overall_score_1to10": int,\n    "must_keep": [str],\n    "must_change": [str],\n    "episode_level_adjustments": [str]\n  }\n}\n',
         constraints=[
             "只输出 JSON 对象。",
             "必须结合输入的 genre_rules（若有）判断题材符合度，不得泛泛而谈。",
             "必须评估故事吸引力、当下市场匹配度、关键转折恰当性、节奏是否仓促、篇幅是否能支撑完整短剧。",
             "must: 作为“密度稽查器”，必须对 episode_list 的 dense contract 字段进行逐集检查并给出硬失败 hard_fail_reasons。",
             "must: hard_fail_reasons 必须显式覆盖并触发以下硬失败逻辑（当条件命中时必须写入对应 reason）：连续 3 集以上没有明确 key_turn；超过 20%-25% 集数写不出 cannot_remove_because；连续 3 集以上没有明确 status_shift 或 price_paid；同一阶段内 episode_engine_type 大量重复；后四分之一集数明显漂向抽象世界观说明；某阶段大量集数只有发现/决定/调查/深入了解且缺少可拍事件位移。",
+            "must: hard_fail_reasons 还必须覆盖市场治理硬失败逻辑：total_episodes < 30；第 1 集 opening_pressure_level=high/extreme 但 visible_gain_type=none 且 hidden_advantage_seed 为空 且 payoff_deadline 不在 {same_episode,next_episode}；前 3 集没有明显可见回报（visible_gain_type!=none 的集数为 0 或 public_standup_event 全空）；front10 bridge_episode_flag 占比过高（>0.5）；前 10 集 retention_engine_tag 缺失/为 none 过多（>6）；front10 opponent_gain 为空过多（>4）；front10 public_standup_event 全空缺失。",
             "overall_score_1to10 取 1-10 整数；pass 仅当 overall_score_1to10 >= 8 且 hard_fail_reasons 为空时可为 true。",
             "must_fix 至少给 3 条可执行建议；rewrite_brief 必须具体到可改写的分集层动作，并尽量用“episodes X-Y 缺少XX、建议合并/改写并补一个公开秩序场/资源损失/关系断裂”等格式。",
-            "should: 返修建议必须包含“如何让密度变高”的明确手段（补充公开可拍事件、明确关键转折、写清代价、把世界揭示落回人物冲突与秩序清算）。",
+            "should: 返修建议必须包含“如何让密度变高 + 如何让前 10 集留人”的明确手段（补充公开可拍回报、把回报提前到下一集内、减少纯桥接、补反派具体得失、修正开局高压回报过慢）。",
         ],
     ),
 )
@@ -303,7 +312,7 @@ episode_function_agent = Agent(
     model=MODEL,
     description="生成本集在整季中的功能卡：承接 anchor、必须推进/继承项、持久变化、观众爽点设计与线索强化。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "episode_id": int,\n  "linked_anchor_ids": [int],\n  "episode_goal_in_series": str,\n  "must_advance": [str],\n  "must_inherit": [str],\n  "what_changes_persistently": [str],\n  "what_is_learned": [str],\n  "what_is_mislearned": [str],\n  "what_is_gained": [str],\n  "what_is_lost": [str],\n  "future_threads_strengthened": [str],\n  "viewer_payoff_design": [\n    {\n      "type": str,\n      "setup_source": str,\n      "payoff_target": str,\n      "description": str\n    }\n  ],\n  \n  "contract_key_turn_mapping": str,\n  "contract_price_paid_mapping": str,\n  "contract_visual_event_mapping": str,\n  "contract_cannot_remove_support": str,\n  "contract_risk_if_softened": str,\n  "contract_tension_or_missing_density": str\n}\n',
+        schema_hint='{\n  "episode_id": int,\n  "linked_anchor_ids": [int],\n  "episode_goal_in_series": str,\n  "must_advance": [str],\n  "must_inherit": [str],\n  "what_changes_persistently": [str],\n  "what_is_learned": [str],\n  "what_is_mislearned": [str],\n  "what_is_gained": [str],\n  "what_is_lost": [str],\n  "future_threads_strengthened": [str],\n  "future_threads_strengthened_items": [\n    {\n      "setup_id": str,\n      "description": str,\n      "payoff_window": str,\n      "why_it_matters": str\n    }\n  ],\n  "viewer_payoff_design": [\n    {\n      "payoff_id": str,\n      "linked_setup_ids": [str],\n      "type": str,\n      "payoff_target": str,\n      "description": str,\n      "setup_source": str,\n      "setup_source_id": str\n    }\n  ],\n  \n  "contract_key_turn_mapping": str,\n  "contract_price_paid_mapping": str,\n  "contract_visual_event_mapping": str,\n  "contract_cannot_remove_support": str,\n  "contract_risk_if_softened": str,\n  "contract_tension_or_missing_density": str\n}\n',
         constraints=[
             "严格输出合法 JSON（一个且仅一个 JSON 对象）；不允许额外自然语言。",
             "episode_id 必须与输入一致。",
@@ -315,6 +324,7 @@ episode_function_agent = Agent(
             "must: 若输入中当前 episode 合同包含 must_payoff/must_set_up 字段，viewer_payoff_design 至少 2 条必须覆盖 must_payoff 的内容，future_threads_strengthened 至少 1 条必须覆盖 must_set_up 的回收路径。",
             "must: what_changes_persistently 至少 1 条，写清本集结束后会留下来的东西。",
             "must: viewer_payoff_design 至少 2 条；每条须含 type（如 rule_exploit/shock/reversal/emotional_hit）、payoff_target（如 early_hook/act2_or_act3/closing）、description（中文，可执行）。",
+            "must: 若输入 current_episode_contract 存在 must_payoff_items（对象数组且含 payoff_id），viewer_payoff_design 的 payoff_id 必须优先对齐至少 1 个 must_payoff_items.payoff_id。",
             "should: setup_source 可指向 must_inherit/must_advance 等，说明爽点承接来源；无则写空字符串。",
             "should: what_is_mislearned 可写主角或团队的错误认知，为后续反噬埋伏笔。",
             "must: contract_key_turn_mapping 需要明确说明本功能卡如何兑现 dense contract.key_turn（不得只复述合同）。",
@@ -370,6 +380,10 @@ episode_script_agent = Agent(
             "must: 若 requires_rule_execution_map=false：不得为凑规则写伪条文；不强制落实空 rule_execution_map。",
             "must: 必须体现 episode_function 中的 must_advance、what_is_learned/what_is_mislearned、what_changes_persistently，不得写成与功能卡无关的平行故事。",
             "must: dialogue 必须是口语化中文短句；narration 必须是中文且有情绪/画面感。",
+            "must: 主对白优先 6-18 字短句；超过 26 字的台词整集应极少（建议不超过 2 句）。",
+            "must: 主角关键回应必须短、清、带态度；禁止解释腔、总结腔、作者腔。",
+            "must: 反派 / 家人 / 群众要有明显口吻区分；禁止让全员口吻像同一个全知编剧。",
+            "should: 群众/观众发言优先短促、同质但不完全重复；避免全员编剧化。",
             "must: 若 requires_visible_rule_punishment=true：整集须有显式规则被触发/违反后的可感后果（惩罚、异变、重伤、公开处刑式反馈等），用旁白+对话+环境细节呈现。",
             "must: 若 requires_visible_rule_punishment=false：须有‘核心机制/关系/秩序被触发后的后果兑现’（如关系破裂、资源失守、站队变化、误会升级、名誉损失、身份暴露、情感错位、社会性惩罚等），禁止硬写条文式规则惩罚。",
             "must: 若 uses_explicit_rules=true：不允许角色直接口头完整解释破局逻辑或规则原理；须通过试错动作、代价、环境反馈和现场反噬侧面呈现。",
@@ -436,13 +450,15 @@ episode_package_judge_agent = Agent(
     model=MODEL,
     description="在 storyboard 之后审整包：功能卡兑现、叙事落地、Seedance 可拍性与 prompt 质量。",
     instruction=_json_only_instruction(
-        schema_hint='{\n  "pass": bool,\n  "overall_score_1to10": int,\n  "function_delivered": bool,\n  "narrative_not_hollow": bool,\n  "seedance_prompts_usable": bool,\n  "rules_and_clues_landed": bool,\n  "issues": [str],\n  "must_fix": [str],\n  "rewrite_scope": str,\n  "quality_judge": { "pass": bool, "reason": str, "overall_score_1to10": int }\n}\n',
+        schema_hint='{\n  "pass": bool,\n  "overall_score_1to10": int,\n  "function_delivered": bool,\n  "narrative_not_hollow": bool,\n  "seedance_prompts_usable": bool,\n  "rules_and_clues_landed": bool,\n  "dialogue_short_drama_fit": bool,\n  "dialogue_problems": [str],\n  "issues": [str],\n  "must_fix": [str],\n  "rewrite_scope": str,\n  "quality_judge": { "pass": bool, "reason": str, "overall_score_1to10": int }\n}\n',
         constraints=[
             "只输出一个 JSON 对象。",
             "输入包含整集：episode_function、plot、script、storyboard；须检查是否空谈、分镜是否可拍、seedance_video_prompt 是否只是复述而无画面执行。",
             "rewrite_scope 必须是以下之一：storyboard | script | plot ；storyboard=仅重分镜；script=剧本+分镜需重做；plot=从节拍起重做（下游全重跑）。",
             "quality_judge.pass 必须与顶层 pass 一致；quality_judge.reason 用 1-3 句中文概括；overall_score_1to10 与顶层一致。",
-            "pass 仅当 overall_score_1to10>=8 且 function_delivered、narrative_not_hollow、seedance_prompts_usable、rules_and_clues_landed 均为 true。",
+            "pass 仅当 overall_score_1to10>=8 且 function_delivered、narrative_not_hollow、seedance_prompts_usable、rules_and_clues_landed、dialogue_short_drama_fit 均为 true。",
+            "dialogue_short_drama_fit 判定逻辑：若整集出现明显长句堆砌、解释腔、角色口吻混同、narration 抢对白、则为 false。",
+            "dialogue_problems 必须给中文可执行问题描述（对应 dialogue_short_drama_fit=false 的原因）。",
             "rules_and_clues_landed 判定：若【题材能力开关】requires_rule_execution_map=true，须检查 plot.rule_execution_map 与分镜是否落地；若为 false，则改为检查功能卡爽点、主线推进与关键线索/关系后果是否在 script+storyboard 中有可拍落地，不得因无规则表判失败。",
             "must_fix 为中文可执行项；不通过时至少 2 条。",
         ],

@@ -875,6 +875,41 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
     if isinstance(episode_list, list):
         planned_episodes = len(episode_list)
 
+    # ------------------------------
+    # Outline Health（只读聚合：series_outline / dense_outline_validation_final）
+    # ------------------------------
+    series_setup = _load_json(paths["series_setup"]) or {}
+    dense_val = series_setup.get("dense_outline_validation_final") or {}
+    dense_stats = (dense_val.get("stats") or {}) if isinstance(dense_val, dict) else {}
+    preferred_min = series_setup.get("preferred_total_episodes_min") or 30
+    preferred_max = series_setup.get("preferred_total_episodes_max") or 80
+    actual_total_episodes = dense_stats.get("episode_count") or (
+        len(episode_list) if isinstance(episode_list, list) else 0
+    )
+    episode_count_fit_pass = bool(
+        actual_total_episodes >= int(preferred_min)
+        and actual_total_episodes <= int(preferred_max)
+    )
+    top_outline_hard_fails = dense_val.get("hard_fail_reasons") or []
+    top_outline_warnings = dense_val.get("warnings") or []
+
+    outline_health = {
+        "preferred_episode_range": [int(preferred_min), int(preferred_max)],
+        "actual_total_episodes": int(actual_total_episodes) if actual_total_episodes is not None else 0,
+        "episode_count_fit_pass": episode_count_fit_pass,
+        "opening_pressure_misfire_flag": dense_stats.get("opening_pressure_misfire_flag"),
+        "front3_visible_payoff_count": dense_stats.get("front3_visible_payoff_count"),
+        "front10_low_payoff_runs": dense_stats.get("front10_low_payoff_runs"),
+        "front10_bridge_only_ratio": dense_stats.get("front10_bridge_only_ratio"),
+        "front10_retention_engine_missing_count": dense_stats.get("front10_retention_engine_missing_count"),
+        "front10_public_standup_missing_count": dense_stats.get("front10_public_standup_missing_count"),
+        "top_outline_hard_fails": top_outline_hard_fails,
+        "top_outline_warnings": top_outline_warnings,
+        "root_cause_hint": (
+            "outline" if top_outline_hard_fails else "downstream_or_unknown"
+        ),
+    }
+
     series_episode_brief_by_id: Dict[int, Dict[str, Any]] = {}
     if isinstance(episode_list, list):
         for item in episode_list:
@@ -1106,6 +1141,7 @@ def build_dashboard_payload(series_dir: Path) -> Dict[str, Any]:
         "warnings": reg_warns,
         "data_sources_note": "见模块 docstring：dashboard_readonly.py",
         "overview": overview,
+        "outline_health": outline_health,
         "episodes": episodes_out,
         "episode_details": episode_details,
         "character_details": character_details,

@@ -47,7 +47,8 @@ def _make_episode(
 
 class TestOutlineValidator(unittest.TestCase):
     def test_full_outline_pass(self) -> None:
-        series_outline = {"episode_list": [_make_episode(i) for i in range(1, 9)]}
+        # 新增市场治理：total_episodes < 30 属于 hard fail，因此此处用 30 集确保可通过
+        series_outline = {"episode_list": [_make_episode(i) for i in range(1, 31)]}
         r = validate_dense_outline(series_outline)
         self.assertTrue(r["is_pass"])
         self.assertEqual(r["hard_fail_reasons"], [])

@@ -159,6 +159,7 @@ def _validate_stage_output(
     stage: str,
     obj: Dict[str, Any],
     genre_caps: Optional[Dict[str, Any]] = None,
+    qc_context: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     if stage == "character_bible":
         issues = _validate_required_keys(obj, ["style_anchor", "main_characters"])
@@ -212,6 +213,60 @@ def _validate_stage_output(
                 for k in ("type", "payoff_target", "description"):
                     if _is_blank(item.get(k)):
                         issues.append(f"viewer_payoff_design[{i}] 缺少或为空: {k}")
+
+        # market gating ID alignment（仅在输入合同提供新字段时启用）
+        if isinstance(qc_context, dict):
+            mp_items = qc_context.get("must_payoff_items") or []
+            expected_payoff_ids: List[str] = []
+            if isinstance(mp_items, list):
+                for it in mp_items:
+                    if isinstance(it, dict):
+                        pid = str(it.get("payoff_id") or "").strip()
+                        if pid:
+                            expected_payoff_ids.append(pid)
+            expected_payoff_ids = list(dict.fromkeys(expected_payoff_ids))
+
+            if expected_payoff_ids:
+                present_ids: List[str] = []
+                for it in (vpd if isinstance(vpd, list) else []):
+                    if isinstance(it, dict) and str(it.get("payoff_id") or "").strip():
+                        present_ids.append(str(it.get("payoff_id")).strip())
+                if not any(pid in present_ids for pid in expected_payoff_ids):
+                    issues.append(
+                        "viewer_payoff_design 未能优先对齐 current episode contract.must_payoff_items 的 payoff_id"
+                    )
+
+            ms_items = qc_context.get("must_set_up_items") or []
+            expected_setup_ids: List[str] = []
+            if isinstance(ms_items, list):
+                for it in ms_items:
+                    if isinstance(it, dict):
+                        sid = str(it.get("setup_id") or "").strip()
+                        if sid:
+                            expected_setup_ids.append(sid)
+            expected_setup_ids = list(dict.fromkeys(expected_setup_ids))
+
+            if expected_setup_ids:
+                ft_items = obj.get("future_threads_strengthened_items") or []
+                present_setup_ids: List[str] = []
+                if isinstance(ft_items, list):
+                    for it in ft_items:
+                        if isinstance(it, dict) and str(it.get("setup_id") or "").strip():
+                            present_setup_ids.append(str(it.get("setup_id")).strip())
+                # 如果没有新结构，也允许用旧 strings 做兜底（setup_id 出现在字符串中）
+                if not present_setup_ids:
+                    ft_strs = obj.get("future_threads_strengthened") or []
+                    if isinstance(ft_strs, list):
+                        ft_blob = "\n".join(str(x or "") for x in ft_strs)
+                        if not any(sid in ft_blob for sid in expected_setup_ids):
+                            issues.append(
+                                "future_threads_strengthened 未能对齐 current episode contract.must_set_up_items 的 setup_id"
+                            )
+                else:
+                    if not any(sid in present_setup_ids for sid in expected_setup_ids):
+                        issues.append(
+                            "future_threads_strengthened_items 未能对齐 current episode contract.must_set_up_items 的 setup_id"
+                        )
         return issues
     if stage == "plot":
         caps = genre_caps if isinstance(genre_caps, dict) else get_primary_genre_capabilities("general")
@@ -275,6 +330,7 @@ async def _run_agent_json_with_qc(
     debug_dir: Path,
     max_rounds: int = 3,
     genre_caps: Optional[Dict[str, Any]] = None,
+    qc_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if quality_mode != "quality":
         return await _run_agent_json(
@@ -298,7 +354,7 @@ async def _run_agent_json_with_qc(
             session_id=sid,
             debug_dir=debug_dir,
         )
-        issues = _validate_stage_output(stage, out, genre_caps=genre_caps)
+        issues = _validate_stage_output(stage, out, genre_caps=genre_caps, qc_context=qc_context)
         if not issues:
             return out
         last_issues = issues
@@ -798,6 +854,31 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     if not chosen_concept:
         raise RuntimeError("recommended_concept_id 未匹配到概念。")
 
+    # ------------------------------
+    # 市场体量 hard gate（前移到 concept 层）
+    # ------------------------------
+    preferred_total_episodes_min = int(chosen_concept.get("preferred_total_episodes_min") or 30)
+    preferred_total_episodes_max = int(chosen_concept.get("preferred_total_episodes_max") or 80)
+    is_longform_series = bool(chosen_concept.get("is_longform_series") or False)
+    retention_engine_hint = str(chosen_concept.get("retention_engine_hint") or "")
+    opening_pressure_style = str(chosen_concept.get("opening_pressure_style") or "")
+
+    chosen_total_episodes = int(chosen_concept.get("total_episodes") or 0)
+    concept_count_fit_hard_fails: List[str] = []
+    if chosen_total_episodes and chosen_total_episodes < preferred_total_episodes_min:
+        concept_count_fit_hard_fails.append(
+            f"概念体量风险：chosen total_episodes={chosen_total_episodes} < preferred_total_episodes_min={preferred_total_episodes_min}"
+        )
+    # 若题材要求“开局快回报”，且体量明显偏短，也直接在 concept 层给硬风险信号
+    if (
+        opening_pressure_style == "high_pressure_with_fast_payoff"
+        and chosen_total_episodes
+        and chosen_total_episodes < max(3, preferred_total_episodes_min - 5)
+    ):
+        concept_count_fit_hard_fails.append(
+            "概念开局高压快回报要求与体量偏短冲突（opening_pressure_style + total_episodes）"
+        )
+
     # concept bundle：在最终 chosen_concept 确定后，重算一遍题材 bundle
     # 用于后续 season_mainline / anchor_beats / 分集大纲 / 大纲复审等“上游 outline 链”。
     concept_infer_text = json.dumps(chosen_concept, ensure_ascii=False)
@@ -911,6 +992,11 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         f"anchor_beats=\n{json.dumps(anchor_beats_out, ensure_ascii=False)}\n\n"
         f"coupling_map=\n{json.dumps(coupling_out, ensure_ascii=False)}\n"
     )
+    if concept_count_fit_hard_fails:
+        outline_prompt_base += (
+            "\n\n【概念体量 hard gate 风险（进入 outline 前已知，必须在本次修复中落实）】\n"
+            + "\n".join([f"- {x}" for x in concept_count_fit_hard_fails if x])
+        )
     outline_prompt = _inject_genre_prompt_for_stage(concept_bundle, outline_prompt_base, "episode_outline_expander")
 
     min_outline_score = 8 if args.quality_mode == "quality" else 7
@@ -960,7 +1046,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         score = int(outline_review_out.get("overall_score_1to10") or 0)
         outline_hard_fails = list(outline_review_out.get("hard_fail_reasons") or [])
         dense_hard_fails = list(dense_validation.get("hard_fail_reasons") or [])
-        hard_fails = outline_hard_fails + dense_hard_fails
+        hard_fails = outline_hard_fails + dense_hard_fails + concept_count_fit_hard_fails
 
         # 4) 若无 dense hard fail 但有强启发式风险，则触发 warning judge 二次裁决
         dense_should_judge = _dense_outline_warning_judge_needed(dense_validation)
@@ -1033,11 +1119,26 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
             episode_level_actions = rb.get("episode_level_actions") or []
 
             must_fix_text = "\n".join([f"- {x}" for x in must_fix_now if x])
+            ms = dense_validation.get("stats") or {}
+            market_extra = (
+                "\n\n【market_gating_stats】\n"
+                + f"preferred_total_episodes_min={preferred_total_episodes_min}\n"
+                + f"preferred_total_episodes_max={preferred_total_episodes_max}\n"
+                + f"retention_engine_hint={retention_engine_hint}\n"
+                + f"opening_pressure_misfire_flag={ms.get('opening_pressure_misfire_flag')}\n"
+                + f"front3_visible_payoff_count={ms.get('front3_visible_payoff_count')}\n"
+                + f"front10_low_payoff_runs={ms.get('front10_low_payoff_runs')}\n"
+                + f"front10_bridge_only_ratio={ms.get('front10_bridge_only_ratio')}\n"
+                + f"front10_retention_engine_missing_count={ms.get('front10_retention_engine_missing_count')}\n"
+                + f"front10_opponent_gain_missing_count={ms.get('front10_opponent_gain_missing_count')}\n"
+                + f"front10_public_standup_missing_count={ms.get('front10_public_standup_missing_count')}\n"
+            )
             judge_extra = (
                 "\n【dense_outline_warning_judge_agent】\n"
                 f"why={judge_out.get('why')}\n"
                 + (f"must_fix_now:\n{must_fix_text}\n" if must_fix_text else "")
                 + f"rewrite_brief={json.dumps(rb, ensure_ascii=False)}\n"
+                + market_extra
             )
 
             if action == "rewrite_outline_only":
@@ -1144,6 +1245,20 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
             rewrite_brief = json.dumps(outline_review_out.get("rewrite_brief", {}), ensure_ascii=False)
             val_hard = "\n".join([f"- {x}" for x in (dense_validation.get("hard_fail_reasons") or [])])
             val_warn = "\n".join([f"- {x}" for x in (dense_validation.get("warnings") or [])])
+            ms = dense_validation.get("stats") or {}
+            market_block = (
+                "\n\n【market_gating_stats】\n"
+                + f"preferred_total_episodes_min={preferred_total_episodes_min}\n"
+                + f"preferred_total_episodes_max={preferred_total_episodes_max}\n"
+                + f"retention_engine_hint={retention_engine_hint}\n"
+                + f"opening_pressure_misfire_flag={ms.get('opening_pressure_misfire_flag')}\n"
+                + f"front3_visible_payoff_count={ms.get('front3_visible_payoff_count')}\n"
+                + f"front10_low_payoff_runs={ms.get('front10_low_payoff_runs')}\n"
+                + f"front10_bridge_only_ratio={ms.get('front10_bridge_only_ratio')}\n"
+                + f"front10_retention_engine_missing_count={ms.get('front10_retention_engine_missing_count')}\n"
+                + f"front10_opponent_gain_missing_count={ms.get('front10_opponent_gain_missing_count')}\n"
+                + f"front10_public_standup_missing_count={ms.get('front10_public_standup_missing_count')}\n"
+            )
             outline_prompt = (
                 outline_prompt_base
                 + "\n【上一轮评审未过，请重写 series_outline】\n"
@@ -1157,6 +1272,7 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
                 + "\n\n【dense_outline_validator】hard_fail_reasons:\n"
                 + (val_hard or "- 无")
                 + ("\n\nwarnings:\n" + (val_warn or "- 无") if val_warn else "")
+                + market_block
             )
             outline_prompt = _inject_genre_prompt_for_stage(
                 concept_bundle, outline_prompt, "episode_outline_expander"
@@ -1204,6 +1320,11 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
         "market_report": market_out.get("market_report", ""),
         "concepts": trend_out.get("concepts", []),
         "concept_judge_report": judge_out,
+        "preferred_total_episodes_min": preferred_total_episodes_min,
+        "preferred_total_episodes_max": preferred_total_episodes_max,
+        "is_longform_series": is_longform_series,
+        "retention_engine_hint": retention_engine_hint,
+        "opening_pressure_style": opening_pressure_style,
         "season_mainline": season_mainline_out,
         "character_growth": character_growth_out,
         "world_reveal_pacing": world_reveal_out,
@@ -1255,6 +1376,11 @@ async def run_series_setup(output_root: Path, args: argparse.Namespace) -> None:
     si["setup_primary_genre"] = setup_genre_key
     si["initial_vs_final_changed"] = bool(setup_genre_key != concept_genre_key)
     si["bundle_source"] = "chosen_concept"
+    si["preferred_total_episodes_min"] = preferred_total_episodes_min
+    si["preferred_total_episodes_max"] = preferred_total_episodes_max
+    si["is_longform_series"] = is_longform_series
+    si["retention_engine_hint"] = retention_engine_hint
+    si["opening_pressure_style"] = opening_pressure_style
     si["setting_tags"] = list(concept_bundle.get("setting_tags") or [])
     si["engine_tags"] = list(concept_bundle.get("engine_tags") or [])
     si["relationship_tags"] = list(concept_bundle.get("relationship_tags") or [])
@@ -1549,6 +1675,26 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "must_set_up": (
                 ep_row.get("must_set_up") if isinstance(ep_row.get("must_set_up"), list) else []
             ),
+            # market / retention gating（新字段；旧数据缺失时保持空值，避免 crash）
+            "front3_role": str(ep_row.get("front3_role") or ""),
+            "opening_pressure_level": str(ep_row.get("opening_pressure_level") or ""),
+            "payoff_deadline": str(ep_row.get("payoff_deadline") or ""),
+            "visible_gain_type": str(ep_row.get("visible_gain_type") or ""),
+            "retention_engine_tag": str(ep_row.get("retention_engine_tag") or ""),
+            "opponent_gain": str(ep_row.get("opponent_gain") or ""),
+            "bridge_episode_flag": bool(ep_row.get("bridge_episode_flag")),
+            "hidden_advantage_seed": str(ep_row.get("hidden_advantage_seed") or ""),
+            "public_standup_event": str(ep_row.get("public_standup_event") or ""),
+            "must_payoff_items": (
+                ep_row.get("must_payoff_items")
+                if isinstance(ep_row.get("must_payoff_items"), list)
+                else []
+            ),
+            "must_set_up_items": (
+                ep_row.get("must_set_up_items")
+                if isinstance(ep_row.get("must_set_up_items"), list)
+                else []
+            ),
             "dominant_opposition": str(ep_row.get("dominant_opposition") or ""),
             "pressure_arena": str(ep_row.get("pressure_arena") or ""),
             "key_turn": str(ep_row.get("key_turn") or ""),
@@ -1577,6 +1723,17 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "cannot_remove_because": contract_focus.get("cannot_remove_because"),
             "hook": contract_focus.get("hook"),
             "cliffhanger": contract_focus.get("cliffhanger"),
+            "front3_role": contract_focus.get("front3_role"),
+            "opening_pressure_level": contract_focus.get("opening_pressure_level"),
+            "payoff_deadline": contract_focus.get("payoff_deadline"),
+            "visible_gain_type": contract_focus.get("visible_gain_type"),
+            "retention_engine_tag": contract_focus.get("retention_engine_tag"),
+            "opponent_gain": contract_focus.get("opponent_gain"),
+            "bridge_episode_flag": contract_focus.get("bridge_episode_flag"),
+            "hidden_advantage_seed": contract_focus.get("hidden_advantage_seed"),
+            "public_standup_event": contract_focus.get("public_standup_event"),
+            "must_payoff_items": contract_focus.get("must_payoff_items"),
+            "must_set_up_items": contract_focus.get("must_set_up_items"),
         }
 
         script_contract_focus = {
@@ -1588,6 +1745,17 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "cannot_remove_because": contract_focus.get("cannot_remove_because"),
             "hook": contract_focus.get("hook"),
             "cliffhanger": contract_focus.get("cliffhanger"),
+            "front3_role": contract_focus.get("front3_role"),
+            "opening_pressure_level": contract_focus.get("opening_pressure_level"),
+            "payoff_deadline": contract_focus.get("payoff_deadline"),
+            "visible_gain_type": contract_focus.get("visible_gain_type"),
+            "retention_engine_tag": contract_focus.get("retention_engine_tag"),
+            "opponent_gain": contract_focus.get("opponent_gain"),
+            "bridge_episode_flag": contract_focus.get("bridge_episode_flag"),
+            "hidden_advantage_seed": contract_focus.get("hidden_advantage_seed"),
+            "public_standup_event": contract_focus.get("public_standup_event"),
+            "must_payoff_items": contract_focus.get("must_payoff_items"),
+            "must_set_up_items": contract_focus.get("must_set_up_items"),
         }
 
         storyboard_contract_focus = {
@@ -1597,6 +1765,17 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "cannot_remove_because": contract_focus.get("cannot_remove_because"),
             "hook": contract_focus.get("hook"),
             "cliffhanger": contract_focus.get("cliffhanger"),
+            "front3_role": contract_focus.get("front3_role"),
+            "opening_pressure_level": contract_focus.get("opening_pressure_level"),
+            "payoff_deadline": contract_focus.get("payoff_deadline"),
+            "visible_gain_type": contract_focus.get("visible_gain_type"),
+            "retention_engine_tag": contract_focus.get("retention_engine_tag"),
+            "opponent_gain": contract_focus.get("opponent_gain"),
+            "bridge_episode_flag": contract_focus.get("bridge_episode_flag"),
+            "hidden_advantage_seed": contract_focus.get("hidden_advantage_seed"),
+            "public_standup_event": contract_focus.get("public_standup_event"),
+            "must_payoff_items": contract_focus.get("must_payoff_items"),
+            "must_set_up_items": contract_focus.get("must_set_up_items"),
         }
 
         function_prompt_base = (
@@ -1609,6 +1788,10 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             "- contract_cannot_remove_support：必须引用 must_advance/must_payoff/must_set_up/status_shift 中至少一项，说明“删掉会坏什么”\n"
             "- contract_risk_if_softened：若写薄会损失什么（主线推进/关系位移/回收/世界推进/下一集钩子，至少一类）\n"
             "- contract_tension_or_missing_density：若 dense contract 字段存在空洞/冲突/低密度，请显式指出张力点，不能自动脑补抹平。\n\n"
+            "ID 追踪硬规则：\n"
+            "- 如果 current episode contract 存在 must_payoff_items（对象数组且含 payoff_id），viewer_payoff_design 必须优先按 payoff_id 对齐 must_payoff_items。\n"
+            "- 如果 current episode contract 存在 must_set_up_items（对象数组且含 setup_id），future_threads_strengthened_items / future_threads_strengthened 必须优先对齐这些 setup_id。\n"
+            "- 若 must_payoff_items/must_set_up_items 缺失或为空，则回退使用旧版 must_payoff/must_set_up 字符串数组做文本 overlap。\n\n"
             f"current_episode_contract=\n{json.dumps(contract_focus, ensure_ascii=False)}\n\n"
             f"series_outline=\n{json.dumps(series_outline, ensure_ascii=False)}\n\n"
             f"series_memory=\n{json.dumps(series_memory, ensure_ascii=False)}\n\n"
@@ -1625,6 +1808,7 @@ async def run_episode_batch(output_root: Path, args: argparse.Namespace) -> None
             user_id=user_id,
             session_id=f"episode_{ep_id}_function",
             debug_dir=debug_dir,
+            qc_context=contract_focus,
             genre_caps=batch_genre_caps,
         )
         if function_out.get("episode_id") != ep_id:

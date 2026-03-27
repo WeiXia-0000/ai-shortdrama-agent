@@ -1,6 +1,9 @@
 """
 op run 前校验：state_touch_list 与 writes_to 不得越权。
-MVP：禁止写入 story_thrust、knowledge_fence、asset_ledger。
+注意：当前架构中 `carry.refresh_slice` 允许写入 `knowledge_fence`（用于 promise / 关系 / 知识栅栏的同步更新）。
+因此这里的“禁写”口径以 ALLOWED_REGISTRY_SLICES / FORBIDDEN_REGISTRY_SLICES 为准：
+- 禁止：story_thrust / asset_ledger
+- 允许：knowledge_fence（carry.refresh_slice）
 """
 
 from __future__ import annotations
